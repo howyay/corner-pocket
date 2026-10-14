@@ -890,6 +890,11 @@ REPORT_THRESHOLD_KEYS: tuple[str, ...] = (
 # event records
 # ---------------------------------------------------------------------------
 
+#: The key that names one ball.  Every row of the dense queue and of the two
+#: association audits carries it, so the name has its one home here.
+BALL_ID_KEY = "ball_id"
+
+
 @dataclass(frozen=True)
 class ShotEvent:
     """A motion onset with the evidence that produced it."""
@@ -921,7 +926,7 @@ class ShotEvent:
     thresholds: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
-        return {"kind": self.kind, "ball_id": self.ball_id,
+        return {"kind": self.kind, BALL_ID_KEY: self.ball_id,
                 "onset_frame_index": int(self.onset_frame_index),
                 "onset_t": round(self.onset_t, 6),
                 "onset": [round(self.onset_x, 2), round(self.onset_y, 2)],
@@ -991,7 +996,7 @@ class PotEvent:
         return self.verdict == "pot"
 
     def as_dict(self) -> dict:
-        return {"kind": self.kind, "ball_id": self.ball_id, "verdict": self.verdict,
+        return {"kind": self.kind, BALL_ID_KEY: self.ball_id, "verdict": self.verdict,
                 "reason": self.reason, "pocket": self.pocket,
                 "pocket_px": None if self.pocket_px is None else [round(c, 2) for c in self.pocket_px],
                 "radius_px": None if self.radius_px is None else round(self.radius_px, 2),
@@ -1037,7 +1042,7 @@ class Rejection:
     thresholds: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
-        return {"kind": self.kind, "code": self.code, "ball_id": self.ball_id,
+        return {"kind": self.kind, "code": self.code, BALL_ID_KEY: self.ball_id,
                 "reason": self.reason,
                 "t": None if self.t is None else round(self.t, 6),
                 "frame_index": None if self.frame_index is None else int(self.frame_index),
@@ -1068,7 +1073,7 @@ class UnresolvedEvent:
     thresholds: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
-        return {"kind": self.kind, "code": self.code, "ball_id": self.ball_id,
+        return {"kind": self.kind, "code": self.code, BALL_ID_KEY: self.ball_id,
                 "reason": self.reason, "t": round(self.t, 6),
                 "frame_index": int(self.frame_index), "numbers": dict(self.numbers),
                 "samples_used": [s.as_dict() for s in self.samples_used],

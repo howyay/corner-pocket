@@ -97,7 +97,7 @@ class ShotSpeedWindowTests(unittest.TestCase):
 
     ``ScanConfig.shot_speed_mm_s`` and ``ScanConfig.max_speed_mm_s`` read the two
     names ``src/info_complete_scan`` owns, so the two scanners cannot part.  The
-    pair rule of ``src/candidate_scan.py:205-206`` refuses a speed below the floor
+    pair rule of ``src/candidate_scan.py:209-210`` refuses a speed below the floor
     or above the ceiling.  The longest gap a pair may span is 0.2 s and the
     displacement floor is 300 mm, so the 500 mm/s floor cannot bind with the
     default config (300 mm / 0.2 s = 1500 mm/s).  The cases below lower the

@@ -76,8 +76,8 @@ SITES = {
                      (364, "corrections")),
     "src/store_pg.py": ((69, "verdicts"), (71, "labels"), (389, "corrections")),
     "src/store_check.py": ((61, "verdicts"), (65, "corrections"), (69, "labels")),
-    "src/store_import.py": ((530, "verdicts"), (531, "verdicts"), (562, "labels"),
-                            (590, "corrections"), (709, "verdicts")),
+    "src/store_import.py": ((540, "verdicts"), (541, "verdicts"), (572, "labels"),
+                            (600, "corrections"), (719, "verdicts")),
     "annotator/server.py": ((44, "verdicts"), (49, "labels")),
 }
 #: The names each reader takes from the home, and the line of that import.

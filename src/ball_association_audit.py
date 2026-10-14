@@ -74,6 +74,7 @@ def purity_proxies(report, share_px: float = 3.0) -> dict:
       signature of two different balls fused into one path.
     """
     from src import ball_census as bc
+    from src.shot_pot_gate import BALL_ID_KEY  # local: the top closes a cycle
 
     seen: dict = {}
     shared = 0
@@ -81,13 +82,13 @@ def purity_proxies(report, share_px: float = 3.0) -> dict:
     per_identity: dict = {}
     for row in report.get("gate", {}).get("rejections", []):
         samples = sorted(row.get("samples_used") or (), key=lambda s: s["t"])
-        per_identity.setdefault(row["ball_id"], []).extend(samples)
+        per_identity.setdefault(row[BALL_ID_KEY], []).extend(samples)
         for sample in samples:
             key = (sample.get("frame_index"), round(sample["x"] / share_px), round(sample["y"] / share_px))
             owner = seen.get(key)
-            if owner is not None and owner != row["ball_id"]:
+            if owner is not None and owner != row[BALL_ID_KEY]:
                 shared += 1
-            seen.setdefault(key, row["ball_id"])
+            seen.setdefault(key, row[BALL_ID_KEY])
     for ball_id, samples in per_identity.items():
         samples.sort(key=lambda s: s["t"])
         velocities = []
@@ -118,10 +119,11 @@ def identity_tails(report) -> dict:
     a rejection list is a partial view of every identity that was rejected -- and
     every identity here was (721 rejections for 248 identities).
     """
+    from src.shot_pot_gate import BALL_ID_KEY  # local: the top closes a cycle
     tails: dict = defaultdict(list)
     for row in report.get("gate", {}).get("rejections", []):
         for sample in row.get("samples_used") or ():
-            tails[row["ball_id"]].append(sample)
+            tails[row[BALL_ID_KEY]].append(sample)
     out = {}
     for ball_id, samples in tails.items():
         samples.sort(key=lambda s: s["t"])
@@ -355,9 +357,10 @@ def prediction_residuals(report, max_gap_s: float = 2.5, max_px: float = 600.0) 
 
 
 def _tail_samples(report, ball_id):
+    from src.shot_pot_gate import BALL_ID_KEY  # local: the top closes a cycle
     rows = []
     for row in report.get("gate", {}).get("rejections", []):
-        if row["ball_id"] != ball_id:
+        if row[BALL_ID_KEY] != ball_id:
             continue
         rows.extend(row.get("samples_used") or ())
     rows.sort(key=lambda s: s["t"])

@@ -4,7 +4,7 @@ Round 81.  The served pot's code list opened with
 `codes = ["cloth_occluded_at_disappearance"]` (src/dense_queue.py:250 at HEAD
 3f0b9a7d6e0da2ba04414d621482ee35fba3e92c) -- the answer for *one* of the
 situations the gate can report, handed to every pot the queue served -- while
-src/shot_pot_gate.py:1521-1523 computed the pot's real reason and shipped it as
+src/shot_pot_gate.py:1526-1528 computed the pot's real reason and shipped it as
 `gate.pots[i].reason`.  annotator/vision-stage.js turns that code into a sentence,
 so the queue answering for the gate told the operator "a person covered the cloth
 when the ball vanished" for a ball whose occlusion channel was merely silent.  The
@@ -84,7 +84,7 @@ def _strings(node: ast.AST, assigned: dict, depth: int = 3) -> set:
     """Every string constant this expression can take, following one name hop.
 
     A reason is a literal, a chain of conditional expressions over literals, or a name
-    holding one of those (src/shot_pot_gate.py:1521 assigns the ternary to `reason` and
+    holding one of those (src/shot_pot_gate.py:1526 assigns the ternary to `reason` and
     hands the name to PotEvent at :1518).  The expression's own structure is followed
     all the way down -- the depth counts *name hops*, not nesting, so a conditional
     inside a conditional keeps every branch -- and a sentence is a string too, so the
@@ -157,7 +157,7 @@ class TheGateOwnsTheReasonVocabulary(unittest.TestCase):
     def test_the_gate_vocabulary_is_visible_and_not_empty(self):
         reasons = gate_pot_reasons()
         # The three codes the gate reaches through the name it assigns at
-        # src/shot_pot_gate.py:1521: two spellings and the deepest branch of the
+        # src/shot_pot_gate.py:1526: two spellings and the deepest branch of the
         # chain.  Declared here so a walk that lost one cannot pass as complete.
         for reason in ("cloth_occluded_at_disappearance", "occlusion_channel_silent",
                        "pocket_distance_within_uncertainty"):

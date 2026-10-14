@@ -73,8 +73,8 @@ READERS = (
     ("src/audit_calib.py", 86),
     ("src/quad_fit.py", 154),
     ("src/quad_fit_lines.py", 214),
-    ("src/calib_mapping_audit.py", 437),
-    ("src/calib_mapping_audit.py", 609),
+    ("src/calib_mapping_audit.py", 440),
+    ("src/calib_mapping_audit.py", 612),
 )
 #: Every spelling of the owner name this module accepts as a read of the owner.
 OWNER_SPELLINGS = (OWNER_NAME, f"calib_segments.{OWNER_NAME}")

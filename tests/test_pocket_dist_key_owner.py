@@ -86,14 +86,14 @@ SITES = {
                                  (165, "dict"), (197, "lookup")),
     "src/rebuild_events_calibrated.py": ((27, "import"), (27, "import"), (141, "dict"),
                                          (142, "dict")),
-    "src/candidate_scan.py": ((59, "import"), (59, "import"), (330, "dict"),
-                              (437, "get"), (438, "lookup")),
+    "src/candidate_scan.py": ((59, "import"), (59, "import"), (334, "dict"),
+                              (441, "get"), (442, "lookup")),
     "src/dense_queue.py": ((80, "import"), (80, "import"), (329, "dict")),
     "src/eval_events.py": ((862, "import"), (862, "import"), (864, "get"),
                            (1018, "get")),
     "src/event_gates.py": ((99, "import"), (99, "import"), (186, "get")),
-    "src/shot_pot_gate.py": ((90, "import"), (1407, "dict"), (1566, "dict"),
-                             (1581, "dict"), (1598, "dict")),
+    "src/shot_pot_gate.py": ((90, "import"), (1412, "dict"), (1571, "dict"),
+                             (1586, "dict"), (1603, "dict")),
     "annotator/unified_server.py": ((469, "import"), (1738, "import"), (1739, "get")),
 }
 #: The module each writer takes the home names from.  A name of a row that one

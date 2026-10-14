@@ -97,7 +97,10 @@ class MappingTruthTests(unittest.TestCase):
         which mapping wrote the numbers.
         """
         from src.calib_mapping_audit import claim_frame_provenance, load_mappings
-        if not (ROOT / "out" / "scan30" / "candidates_selected.json").is_file():
+        # The skip guard reads the name of the scan document from its home, so a
+        # rename moves this guard too instead of silencing the case.
+        from src.candidate_scan import CANDIDATES_NAME
+        if not (ROOT / "out" / "scan30" / CANDIDATES_NAME).is_file():
             self.skipTest("no scan candidates")
         ha, hb, _qa, _qb, _pockets = load_mappings()
         prov = claim_frame_provenance(ha, hb)

@@ -61,6 +61,9 @@ from src.projection import as_array, project_point  # noqa: E402
 # Round 60 moved the body of the summary of one list to src/stats.py.  This audit
 # read its own body twice: once here and once in src/eval_table_detect.py.
 from src.stats import summary  # noqa: E402
+# The queue of selected candidates is one document, and src/candidate_scan.py owns
+# its name.  This audit reads the same name under its own scan30 set.
+from src.candidate_scan import CANDIDATES_NAME  # noqa: E402
 
 #: The scan's working frame.  ``src.ball_scale`` owns it: the ball's pixel size
 #: scales with the frame, so the two facts cannot move apart.
@@ -74,7 +77,7 @@ ANCHORS = ROOT / anchors_reference_path("vod30")
 # the file moves this reader too.  Round 93 found the path spelled here by hand.
 SCAN_QUAD = ROOT / SCAN_CORNERS
 VIDEO = media_path(ROOT, "vod30")
-CANDIDATES = ROOT / "out" / "scan30" / "candidates_selected.json"
+CANDIDATES = ROOT / "out" / "scan30" / CANDIDATES_NAME
 OUT = ROOT / "out" / "calib_mapping_audit.json"
 # Frames the segment artifact already measured: early (unoccluded), the two
 # verified low-coverage event frames, and the last sample of the VOD.  The two

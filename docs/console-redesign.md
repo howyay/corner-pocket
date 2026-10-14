@@ -3264,7 +3264,7 @@ repaired and pushed; the others run in parallel under disjoint write scopes.
 
 | The SAM3 admission gate | The bar that admits a ball instance was written in nine modules. The score cut 0.62 had nine code homes (`src/ball_census.py:110`, `src/ball_fp_audit.py:80`, `src/collect2.py:47`, `src/fast_ball_labels.py:51`, `src/pipeline.py:32`, `src/recut_crops.py:94`, `src/sam3_ball_cache.py:42`, `src/scan_events.py:145`, `src/tiny_ball_net.py:64`), the area band was 60 to 9000 in eight sites, and `src/pipeline.py:162` alone used 6000. Nothing could say which bar admitted an instance | One module holds the five numbers: `SAM3_BALL_MIN_SCORE = 0.62` at `src/ball_gate.py:84`, `SAM3_BALL_MIN_AREA_PX = 60` at `:87`, `SAM3_BALL_MAX_AREA_PX = 9000` at `:93`, `POC_PIPELINE_BALL_MAX_AREA_PX = 6000` at `:99`, `CLASSICAL_BALL_MAX_AREA_960X540_PX = 4200.0` at `:103`. Each site reads the owner and keeps its own local name, so every existing import still works. The 6000 px and the 9000 px bounds serve the same stage - both measure the sum of a SAM3 mask on the same unscaled 1280x720 source frame, in adjacent lines of one function - so the owner docstring states the disagreement and the behaviour does not change | `tests/test_ball_gate.py` 0 -> 7 tests OK; the guard reads every `.py` file under `src/` and fails when a gate-shaped number appears outside the owner; its exemption map is keyed by module and value, each entry names the different decision it belongs to, a stale exemption fails, and an exemption cannot become a wildcard. `tests/test_scan_events.py` 4 OK, `tests/test_sam3_ball_cache.py` 9 OK, `tests/test_ball_fp_audit.py` 54 OK, `tests/test_pipeline_stages.py` 29 OK, `tests/test_ball_census.py` 48 OK, `tests/test_tiny_ball_net.py` 37 OK. An AST scan of the nine modules removed {0.62 x 10, 60 x 6, 9000 x 5, 6000 x 1, 4200.0 x 1} and added only three `0` and one `1` from three new `sys.path` lines. Perturbations: the owner held 0.61 and exactly `test_the_owner_holds_the_documented_numbers` failed (sha1 `ea32c657…` → `4daf52d2…` → restored); `src/scan_events.py` stated 0.62 again and the guard named `src/scan_events.py:147` (sha1 `c89c4a2d…` → `f045f560…` → restored) |
 
-| The events document | Five modules wrote `out/scan30/events.json` (`src/scan_events.py:352`, `src/rebuild_events_calibrated.py:154`, `src/dense_queue.py:643`, `src/eval_events.py:1139`, `src/candidate_scan.py:609`) and the file carried no producer and no version. Four of its sixteen keys are spelled by one writer only (`dup_count`, `last_px`, `pocket_name` and `provenance` at `src/dense_queue.py:305-315` and `src/eval_events.py:822-823`), so no reader could tell which rule set built the rows it read | `src/events_document.py` owns the two document names, the row shape, the version and one sentence per producer. `write` stamps every row with `{STAMP: {"version": VERSION, "producer": producer}}`; `read` returns the rows with the status STAMPED, MIXED or UNSTAMPED and never guesses a producer. The stamp is a row key, so the file stays a JSON list and its list readers keep working. `DocumentVersionError` is not a `ValueError`, so the permissive `except ValueError` at `src/eval_events.py:790` and `src/candidate_scan.py:609` cannot swallow a newer document | The served file is untouched: `out/scan30/events.json`, 12696 bytes, sha1 `3ffb1fe6…`, reads `4 rows, no stamp; the producer is unknown`. `tests/test_events_document.py` 0 → 24 tests OK, with four source guards holding the six callers to the owner. A rogue `Path(queue_path).write_text(json.dumps(entries, indent=1))` at `src/dense_queue.py:751` fails exactly the JSON guard with a message that names the file, the line and the function; sha1 `dce4d4ba…` → `f7c925bb…` → restored. The write is one atomic step through `src/atomic_write.py` since `1ab737e`: a row that JSON cannot serialize leaves the old document in place and removes its temporary file, and a perturbation back to one `open` fails exactly the new test. One measured difference: a new document has mode 0600 where `open` gave the umask default (0644 in this repository). Not proved: the path is not unique across the repository (`src/info_complete_scan.py:419`, `src/motion_scan.py:2326`, `:2316` and `src/store.py:371` still name the file), and no builder ran end to end, because those builders rewrite products under `out/` |
+| The events document | Five modules wrote `out/scan30/events.json` (`src/scan_events.py:352`, `src/rebuild_events_calibrated.py:154`, `src/dense_queue.py:643`, `src/eval_events.py:1139`, `src/candidate_scan.py:613`) and the file carried no producer and no version. Four of its sixteen keys are spelled by one writer only (`dup_count`, `last_px`, `pocket_name` and `provenance` at `src/dense_queue.py:305-315` and `src/eval_events.py:822-823`), so no reader could tell which rule set built the rows it read | `src/events_document.py` owns the two document names, the row shape, the version and one sentence per producer. `write` stamps every row with `{STAMP: {"version": VERSION, "producer": producer}}`; `read` returns the rows with the status STAMPED, MIXED or UNSTAMPED and never guesses a producer. The stamp is a row key, so the file stays a JSON list and its list readers keep working. `DocumentVersionError` is not a `ValueError`, so the permissive `except ValueError` at `src/eval_events.py:790` and `src/candidate_scan.py:613` cannot swallow a newer document | The served file is untouched: `out/scan30/events.json`, 12696 bytes, sha1 `3ffb1fe6…`, reads `4 rows, no stamp; the producer is unknown`. `tests/test_events_document.py` 0 → 24 tests OK, with four source guards holding the six callers to the owner. A rogue `Path(queue_path).write_text(json.dumps(entries, indent=1))` at `src/dense_queue.py:751` fails exactly the JSON guard with a message that names the file, the line and the function; sha1 `dce4d4ba…` → `f7c925bb…` → restored. The write is one atomic step through `src/atomic_write.py` since `1ab737e`: a row that JSON cannot serialize leaves the old document in place and removes its temporary file, and a perturbation back to one `open` fails exactly the new test. One measured difference: a new document has mode 0600 where `open` gave the umask default (0644 in this repository). Not proved: the path is not unique across the repository (`src/info_complete_scan.py:419`, `src/motion_scan.py:2326`, `:2316` and `src/store.py:371` still name the file), and no builder ran end to end, because those builders rewrite products under `out/` |
 
 | The sam3 artifact | `out/scan30/sam3_results.json` is declared read-only by two modules that read it (`src/sam3_ball_cache.py:40`, `src/eval_events.py:152`) and rewritten in place by two others: `src/rebuild_events_calibrated.py:45` writes it with `json.dump(sam3, open(SAM3, "w"), indent=1)` after it recomputes every row's `table_mm` from `out/calib_final.json`, and `src/scan_events.py:176` writes it too. The file is 37909 bytes with 8 readers and 2 writers, so a reader cannot tell whether the numbers it trusts came from the detector or from a later calibration | In flight, with one owner for the artifact, its row shape and its producer stamp, on the pattern of `src/events_document.py` | In flight. The worker is `4153ba7f`, and its scope is the four modules plus one new test file |
 
@@ -3307,7 +3307,7 @@ could not prove that the console reads the `actions` array the contract publishe
 | C1, the route contract | `Actions.contract()` publishes `actions = list(row.actions)` at `annotator/unified_server.py:145-148` and serves it from GET `/api/actions` at `:1778`, but 1 of 21 rows sets `actions=`: `annotator/unified_server.py:2060` `actions=TOURNAMENT_ACTIONS`. The other 20 rows publish an empty list while their handlers accept verbs the registry cannot see: 8 in `vod_request` (`annotator/unified_server.py:1408`), 2 in `live_action` (`:567`), 4 in `annotator/shot_clock.py:31` and 3 in `annotator/vod_import.py:848` | Landed, commit `a67903c`: every row declares the verbs its handler accepts. The handler's own tuple is the one owner - `LIVE_ACTIONS` in this module (2), `annotator/shot_clock.py` `ACTIONS` (4) and `annotator/vod_import.py` `AUTO_ACTIONS` (3) - and `OperatorAction.verbs` answers the declared tuple, or the last part of the route URL for a row that reads no action out of the payload, so no row publishes an empty set | `tests/test_unified_server.py` 85 → 90 cases, in the new `WriteActionContractTests` class. The python suite `Ran 1554 tests, OK (skipped=53)` |
 | C2, the unstamped caches | Five caches live on one `Backend`: `annotator/unified_server.py:530`, `:541`, `:542`, `:1018` (filled lazily at `:1020`) and `:1181` (lazily at `:1183`). Three carry a stamp and two do not, and `grep -c "\.clear()" annotator/unified_server.py` is 0, so no write invalidates anything. The unstamped pair is `_prior_cache` at `:1013-1024` and `_unified_cache` at `:1046-1049` and `:1087-1092`, bounded by `_UNIFIED_CACHE_MAX = 24` at `:981`. The write that invalidates nothing is `self.store().anchors_put("vod30", str(info["t"]), clean)` at `:1944`, behind the route declared at `:2086`, and the stale value is consumed by `saved = self._prior_for(dataset)` at `:1068` | Open. The provenance rule that three caches state by hand belongs in one place, and a write that changes what a cache holds must invalidate it. Worker `16e50f45` holds this candidate in round 39 | Original row kept above; landed in round 40 as `1b247da`: one `Cache` type at `annotator/unified_server.py:551` answers `(stamp, value)` and pops a stale entry, `Backend.CACHES` at `:1086` declares five rows each with the source it belongs to, every read and write holds `self.lock`, and `_route_anchors` at `:2177` calls `self.invalidate('prior', 'unified')`. The five old attribute names are gone. `tests/test_unified_server.py` 90 -> 102 cases; a perturbation that deletes the invalidate line fails exactly two named cases; a live check on a free port returned 1607 bytes before the anchors write and 1677 after, so the write dropped the cached detection |
 | C4, the durable-write decision | The walk listed the durable-write decision as five places: four atomic writers and two unsafe plain `Path.write_text` calls at `annotator/server.py:130` and `:149`, in a 154-line module with 0 importers | Resolved by round 34 candidate C6, landed as `0b7ecd2`: one owner in `src/atomic_write.py`, nine call sites, five durable and four best effort, with `class TestCallerDurability` holding the two role lists. `annotator/server.py` was not part of that work because nothing imports it | `tests/test_atomic_write.py` 28 tests OK, and the module still has 0 importers |
-| C5, the retention constant | One retention fact lives in two halves: the literal `])[-500:]` at `annotator/operations.py:405` and `MAX_EVENTS = 500` at `src/store_import.py:49`, used at `:178` and `:288`. A comment is the whole contract between them | Landed, commit `58a7d4e`: `src/ops_event_log.py` holds `MAX_EVENTS = 500` and `trim(events)`. Three writers trim through it (`src/store_pg.py:145`, `src/enroll_from_tracklet.py:484`, `annotator/operations.py:415`) and the importer reads the bound from it (`src/store_import.py:181`, `:292`). `src/store_check.py:75` keeps its own SQL `LIMIT 500` and is the one recorded exception | Literal write points 5 → 1, name reads 3 → 2. The new `tests/test_event_retention.py` holds 9 cases. The python suite `Ran 1554 tests, OK (skipped=53)` |
+| C5, the retention constant | One retention fact lives in two halves: the literal `])[-500:]` at `annotator/operations.py:405` and `MAX_EVENTS = 500` at `src/store_import.py:49`, used at `:178` and `:288`. A comment is the whole contract between them | Landed, commit `58a7d4e`: `src/ops_event_log.py` holds `MAX_EVENTS = 500` and `trim(events)`. Three writers trim through it (`src/store_pg.py:145`, `src/enroll_from_tracklet.py:484`, `annotator/operations.py:415`) and the importer reads the bound from it (`src/store_import.py:191`, `:292`). `src/store_check.py:75` keeps its own SQL `LIMIT 500` and is the one recorded exception | Literal write points 5 → 1, name reads 3 → 2. The new `tests/test_event_retention.py` holds 9 cases. The python suite `Ran 1554 tests, OK (skipped=53)` |
 | C7, the Twitch seam | Three host validators (`annotator/twitch_source.py:34`, `annotator/twitch_vod_source.py:99`, `:127`), two allowlists (`:101`, `:124`), seven network sites, and a fourth time-stamped cache at `annotator/twitch_vod_source.py:217` with `_THUMB_CACHE_TTL_S` at `:221` and `_THUMB_CACHE_MAX` at `:222` | Open, Worth exploring. Worker `5e659542` holds this candidate in round 39 | Original row kept above; landed in round 40 as `510d215`: one purpose table at `annotator/twitch_source.py:82` holds four rows (api, live-media, vod-media, thumb), each with its hosts, its cache policy and its refusal sentence, and `annotator/twitch_vod_source.py` declares no host and no cache of its own. The new `tests/test_twitch_fetch.py` holds 24 cases and two of them open a real loopback listener and count requests: 0 before the row names it, 1 after. `test_twitch_source` 17, `test_twitch_vod_source` 32 and `test_vod_import` 32 cases all OK |
 | C8, `_playlist` twice | `def _playlist(text)` is defined twice, at `annotator/twitch_source.py:100` and `:148`, with byte-identical bodies, and the second definition rebinds the name | Open, Speculative | Original row kept above; landed in round 40 as `f9cd68a`: the module keeps the first definition and deletes the paste. Blame showed `f6901185` created the module's copy and `40c47437` pasted a second one, so the paste won the name and a repair to the original changed nothing at run time. Measured: top-level function names 13 and `_playlist` 1, duplicate names []; `tests/test_twitch_source.py` 185 -> 311 lines and 17 -> 19 cases, one of them an AST case; pasting the second copy back reproduces its historical sha1 `5f35ac6a` and fails exactly that case. Live check: 3 fetches, 410 bytes over the socket, 0 sockets to Twitch |
 
@@ -4203,7 +4203,7 @@ reasonText('bite_probe_reason') in zh returns the bare code, and const REASONS h
 the file was restored from a copy. Suites: the module `Ran 6 tests`, OK, node
 `tests/test_ops.js` 211 pass and 0 fail, `test_console_audit_labels` `Ran 4 tests`, OK,
 `test_suite_inventory` `Ran 4 tests`, OK (no skip site added). Limits: the rules cover the four
-producer files above, so a pot event's fourth reason (`src/shot_pot_gate.py:1494
+producer files above, so a pot event's fourth reason (`src/shot_pot_gate.py:1499
 reappeared_after_gap_inside_pocket`) reaches only `provenance.gate_reason` and stays outside them;
 the screen keeps the code in brackets after the sentence by design, because a report refers to the
 code.
@@ -4639,8 +4639,8 @@ Measured: `test_store_files` 20 cases (`15` before), `test_store_import` 7, `tes
 `test_event_retention` 9, `test_unified_server` 104, `test_suite_inventory` 4). The Lead bit the
 owner: a rename of the owner's folder answered `dataset_dir(vod30) = out/scan30x` and
 `store_import.STATIC_OUT is datasets.STATIC_OUT` `True`, so no copy answered the old name. A
-typed map again at `src/store_import.py:746` failed the guard with
-`AssertionError: Lists differ: ["src/store_import.py:746 types {'vod30': 'scan30', 'highlight':
+typed map again at `src/store_import.py:756` failed the guard with
+`AssertionError: Lists differ: ["src/store_import.py:756 types {'vod30': 'scan30', 'highlight':
 'scan_highlight'}"] != []`, and the file went `4012bffbc401118f58c474db3251fdf0712c8116` to
 `ad21cee5727154ec2123145caa9abd1273c1c3ef` and back.
 
@@ -5020,7 +5020,7 @@ an empty `root`, requires `vod30` in every clause that names the file, and refus
 ### Worth 3 and Worth 4 · the boundary written twice, and the copied gate
 
 The boundary 3000 stood twice at `src/timing_verify.py:78-79`, and `src/motion_scan.py:1347` copied
-`person_share: float = 0.02` from `src/candidate_scan.py:78` with a comment. Both readers now read
+`person_share: float = 0.02` from `src/candidate_scan.py:82` with a comment. Both readers now read
 one home. The Lead's extra repair made `tests/ball_dense_events.py` read the same field from
 `ScanConfig`, and a bite on the owner value answered 0.75 in the harness.
 
@@ -5559,7 +5559,7 @@ Ground: `src/ball_scale.py:78 NATIVE_FRAME = (1280, 720)` and
 `src/tiny_ball_net.py:62 NATIVE_WH = (1280, 720)`. Five files read the second name:
 `src/ball_fp_audit.py` 3 times, `src/fast_ball_labels.py` 2, `src/tiny_ball_net.py` 5,
 `tests/ball_stack_ab.py` 2 and `tests/test_tiny_ball_net.py` 5. Four more bindings of the same pair
-stood at `src/calib_mapping_audit.py:232 def rail_evidence(video, times, quad_a, quad_b,
+stood at `src/calib_mapping_audit.py:235 def rail_evidence(video, times, quad_a, quad_b,
 size=(1280, 720)):`, `src/calib_segment_fit.py:265 "frame_size": [1280, 720],`,
 `src/eval_calib.py:66 W, H = 1280, 720` and `src/eval_events.py:60 FULL_W, FULL_H = 1280, 720`. The
 guard of round 52 reads a pair only when it equals the working frame, so it saw neither copy.
@@ -5570,7 +5570,7 @@ Decision: Strong, because the two names can disagree and five modules divide by 
 
 Repair: `src/ball_scale.py:81` holds the one statement. `src/tiny_ball_net.py:65` reads
 `NATIVE_WH = NATIVE_FRAME`, an alias that states no number, and `:79` of the owner names that alias.
-`src/calib_mapping_audit.py:232` reads `size=NATIVE_FRAME` and `:367` reads
+`src/calib_mapping_audit.py:235` reads `size=NATIVE_FRAME` and `:367` reads
 `scale_between(NATIVE_FRAME, WORKING_FRAME)`. `src/calib_segment_fit.py:270` writes
 `list(NATIVE_FRAME)`. `src/eval_calib.py` binds `W, H = NATIVE_FRAME`. `src/eval_events.py` reads
 `FULL_W` and `FULL_H` from the owner. `tests/ball_stack_ab.py` reads the size that the caller asked
@@ -5697,7 +5697,7 @@ Round 52 answered 1945 cases, so this round adds 9: 3 in `tests/test_ball_scale.
 | --- | --- | --- |
 | `reference_quad` holds two bodies, and a third delegates | Worth 3 of the round-51 walk, measured | one dataset and one question answer two ways: `src.sam3_ball_cache.reference_quad(corners_path="out/scan30/corners.json", dataset="nothing-here")` answers `[[459.26, 268.89], [803.75, 315.78], [1023.37, 584.26], [421.81, 560.57]]`, and `src.sam3_frame_audit.reference_quad(dataset="nothing-here", anchors_path="/nonexistent.json")` answers `(None, 'none')`; `def reference_quad` stands at `src/sam3_frame_audit.py:128` |
 | The frame rate is written inline | Worth 3 of the round-52 walk | `cap.get(cv2.CAP_PROP_FPS) or 30` stands at 20 sites in 16 files with two spellings (`or 30` twelve times, `or 30.0` eight), and `30.0003` stands at 8 sites |
-| The default dataset name is written five times | Worth 2 of this walk | `git grep -n 'default="vod30"'` answers `src/ball_association_ab.py:84`, `src/enroll_from_tracklet.py:1175`, `src/eval_events.py:1066`, `src/motion_scan.py:2453` and `src/track_before_detect.py:646`, plus two `out/scan30/sam3_results.json` paths at `src/ball_fp_audit.py:72` and `src/tiny_ball_net.py:57` |
+| The default dataset name is written five times | Worth 2 of this walk | `git grep -n 'default="vod30"'` answers `src/ball_association_ab.py:85`, `src/enroll_from_tracklet.py:1175`, `src/eval_events.py:1066`, `src/motion_scan.py:2453` and `src/track_before_detect.py:646`, plus two `out/scan30/sam3_results.json` paths at `src/ball_fp_audit.py:72` and `src/tiny_ball_net.py:57` |
 | Five more bodies stand twice in two modules each | Worth 1 of this walk | `common` of `src/motion_scan.py:2454` and `src/track_before_detect.py:644`, `frame_detections` of `src/store.py:408` and `src/store_pg.py:422`, `log_message` and `_send` of `src/pid_anchor_ui.py:139,142` and `src/pid_seed_ui.py:146,148`, and `seeds_get` of `src/store.py:292` and `src/store_pg.py:273` |
 | Three test literals restate the native pair | Note 1 of this walk | `tests/test_ball_scale.py:315`, `tests/ball_dense_events.py:57 NATIVE = (1280, 720)` and `tests/test_app_quad_contract.py:43 REF_WIDTH, REF_HEIGHT = 1280, 720` |
 | The duplicate-body walk reads module-level `def`s of `src/*.py` only | limit of round 51, still open | Strong 2 of this round lived inside it: the walk reaches 780 of the 1171 `def`s, and the docstring of `module_bodies` says that a nested `def` and a method do not count there |
@@ -6057,7 +6057,7 @@ import lines of our own code (`src/sam3_cpu.py:19`, `:29`, `:43` and `src/multip
 ### Strong A · the verified frames stood in four setup tuples
 
 Ground: four modules held a literal tuple of the two frames a person verified against the reference
-quad. `src/calib_mapping_audit.py:71 FRAME_TIMES = (70.0, 0.0, 483.4, 1120.2, 1800.0)` stood under the
+quad. `src/calib_mapping_audit.py:74 FRAME_TIMES = (70.0, 0.0, 483.4, 1120.2, 1800.0)` stood under the
 comment "Frames the segment artifact already measured"; `src/calib_segment_measure.py:65 CANDIDATE_TIMES
 = (450.0, 450.3, 483.4, 483.7, 941.5, 1119.9, 1120.2, 1120.6, 1200.0)`; `src/calib_segment_fit.py:253
 | {1120.2, 483.4, 1380.0, 1800.0})`; `src/segment_calib_report.py:266 [0.0, 420.0, 450.0, 483.4, 941.5,
@@ -6203,7 +6203,7 @@ Round 55 answered 1990 cases and this round answers 2015. The 25 named additions
 | --- | --- | --- |
 | The atomic JSON write stands as a nested `def` in five modules | Worth E of this walk, held for round 57 | `src/store.py:195`, `src/enroll_from_tracklet.py:621`, `annotator/shot_clock.py:254`, `annotator/unified_server.py:322` and `annotator/vod_import.py:197`, while `src/atomic_write.py:57 write_atomic` owns the rule |
 | The cache-busting token of one asset stands five times on one line | Worth F of this walk, held for round 57 | `annotator/ops.html:2` holds `?v=vision-stage-52` twice, `-64` once and `-68` twice, and `tests/test_ops.js:4676` accepts any number |
-| The two coverage numbers stand as prose and as test literals | found by Strong A of this walk | `src/eval_events.py:391`, `src/event_gates.py:120`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and `tests/test_event_gates.py:180`, `:200` and `tests/test_calib_mapping_audit.py:191` |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of this walk | `src/eval_events.py:391`, `src/event_gates.py:120`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and `tests/test_event_gates.py:180`, `:200` and `tests/test_calib_mapping_audit.py:194` |
 | The verdict line of a walk can disagree with its own sections | limit of this round | the round-56 walk answered `3 Strong` and wrote four Strong sections |
 | The colour walk reads a table by its name | limit of this round | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The colour guard writes a file into `src/` while it runs | limit of this round | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally`, so a killed run leaves the file behind |
@@ -6436,7 +6436,7 @@ about a moved line is measured at HEAD, never in the writer's own tree.
 | The console modules and their suites are read by grep only | limit of this round | `annotator/app.js`, `ops.js`, `vision-stage.js` (about 570 KB) and the three `.js` suites, with the `.css` files of `annotator/` |
 | A walk cannot see inside `src/sam3/`, `viz/` and most of `docs/` | limit of this round | `src/sam3/` through four import lines, `viz/` and about 30 files of `docs/`, and `db/migrations/0003_json_documents.sql` |
 | The twenty-two `_do_*` methods of the operations layer | limit of this round | no walk read a method body of `annotator/operations.py` |
-| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:120`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and `tests/test_event_gates.py:180`, `:205`, `tests/test_calib_mapping_audit.py:191` |
+| The two coverage numbers stand as prose and as test literals | found by Strong A of round 56 | `src/eval_events.py:391`, `src/event_gates.py:120`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and `tests/test_event_gates.py:180`, `:205`, `tests/test_calib_mapping_audit.py:194` |
 | The colour walk reads a table by its name | limit of round 56 | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
 | The colour guard writes a file into `src/` while it runs | limit of round 56 | `test_the_walk_finds_a_second_copy_planted_in_a_temp_module` writes `src/_color_alias_probe.py` inside a `try/finally`, so a killed run leaves the file |
 | The store walk is pinned to the wording of one revision | limit of round 56 | `FROZEN_RULES` holds the text of the six statements, so a reworded copy passes |
@@ -6744,8 +6744,8 @@ stood at eight lines in seven modules.
 | site at HEAD | inside | threshold | finite test | answer |
 | --- | --- | --- | --- | --- |
 | `annotator/unified_server.py:1623` | `ServerBackend._project` | `1e-9` | yes | `None` |
-| `src/calib_mapping_audit.py:99` | `project(H_inv, mm)` | `1e-12` | yes | `None` |
-| `src/calib_mapping_audit.py:106` | `unproject(H, px)` | `1e-12` | yes | `None` |
+| `src/calib_mapping_audit.py:102` | `project(H_inv, mm)` | `1e-12` | yes | `None` |
+| `src/calib_mapping_audit.py:109` | `unproject(H, px)` | `1e-12` | yes | `None` |
 | `src/dense_queue.py:132` | `to_mm(H, x, y)` | `1e-9` | no | `None` |
 | `src/eval_events.py:356` | `Probe.px` | `1e-9` | yes | `None` |
 | `src/eval_events.py:376` | `Probe.claim_px` | `1e-9` | yes | `None` |
@@ -6762,7 +6762,7 @@ spellings, and ten more sites applied the rule with no guard at all.
 Repair: `src/projection.py` owns the rule as `def project_point(x, y, w, tolerance=DEFAULT_TOLERANCE)`
 at `:41`, with `DEFAULT_TOLERANCE = 1e-12` at `:36` for the physical path and `PIXEL_TOLERANCE = 1e-9`
 at `:38` for the pixel path. The owner answers `None`, never a `nan` coordinate. The eight readers call
-it (`annotator/unified_server.py:1628`, `src/calib_mapping_audit.py:104` and `:109`,
+it (`annotator/unified_server.py:1628`, `src/calib_mapping_audit.py:107` and `:109`,
 `src/dense_queue.py:137`, `src/eval_events.py:361` and `:384`, `src/info_complete_scan.py:178`,
 `src/shot_pot_gate.py:536`). The gate is the one site that keeps its own contract: it translates the
 refusal into `raise ValueError("point maps to infinity")` and inherits the owner's decision. The
@@ -6841,7 +6841,7 @@ def _order`.
 `Worth 6`: the operations document path stood as one constant (`src/store_pg.py:54 STATE =
 "out/corner-pocket/state.json"`) and a second spelling inside the layout owner, plus the whole literal in
 six more modules. Repair: `src/store_files.py:44 STATE_DOCUMENT` is the one name, read by
-`src/store_pg.py`, `src/store_check.py:45`, `src/store_import.py:184`, `src/eval_faces.py:80` and
+`src/store_pg.py`, `src/store_check.py:45`, `src/store_import.py:194`, `src/eval_faces.py:80` and
 `src/store.py:170`; `git grep -c "out/corner-pocket/state.json"` went from eight files and fourteen
 lines to three files and three lines.
 
@@ -7014,11 +7014,11 @@ Ground: four local summaries of "the median and a high percentile" —
 `src/enroll_from_tracklet.py:181 def stats(values) -> dict:`, `src/eval_faces.py:219 def
 pair_stats(values):` (one body, digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9`, recorded in
 `tests/test_duplicate_bodies.py`'s `APART_ON_PURPOSE` table with the note that a later change owning both
-files gives one the body and the other the import), `src/calib_mapping_audit.py:452 def _stats(values):`
+files gives one the body and the other the import), `src/calib_mapping_audit.py:455 def _stats(values):`
 (answers `{"n": 0}` when empty, holds `p10` and `p90`, rounds to 2) and `src/eval_table_detect.py:379 def
 _stats(values):` (answers `None` when empty, holds `p90`, rounds to 2). And one percentile rule in two
-audit modules: `src/ball_association_audit.py:106 def _percentile(values, fraction):` with eight call
-sites and `src/ball_association_ab.py:37 def _percentile(values, fraction):` with one, while
+audit modules: `src/ball_association_audit.py:107 def _percentile(values, fraction):` with eight call
+sites and `src/ball_association_ab.py:38 def _percentile(values, fraction):` with one, while
 `src/ball_association_ab.py:33` already held `from src import ball_association_audit as audit`.
 
 Repair: `src/stats.py` owns the summary as `summary(values, keys=SUMMARY_KEYS, digits=4) -> dict`
@@ -7030,7 +7030,7 @@ gone), `src/eval_faces.py:65` imports `read_pair` and binds `pair_stats = read_p
 object), `src/calib_mapping_audit.py` holds `OFFSET_STATS_KEYS` and `OFFSET_STATS_DIGITS = 2` around a
 thin `_stats` that answers `{"n": 0}`, and `src/eval_table_detect.py` holds `ERROR_STATS_KEYS` around a
 thin `_stats` that answers `None`. The percentile keeps its home in
-`src/ball_association_audit.py:106`, and `src/ball_association_ab.py:39` reads
+`src/ball_association_audit.py:107`, and `src/ball_association_ab.py:40` reads
 `_percentile = audit._percentile`, so the two modules hold one function object. The
 `APART_ON_PURPOSE` entry of digest `df02f87e2fc190ef51b10bdd2b80367dc5c1cdc9` is gone, which the record
 of round 51 asked for, and the two other entries still hold. `tests/test_stats.py` holds 26 cases: six
@@ -8097,7 +8097,7 @@ reason stands in its docstring and in the harness docstring, because `tools/` is
 `FPS_FALLBACK` (17 import lines and 25 reader sites) and 11 do not (ten plain container-rate reads and one
 prose line in `annotator/shot_clock.py:40`). A site that means the fixed clip rate (30.0003 or 30.0 for the
 vod30 clips) keeps its own value with an explicit `not the fallback` comment, in
-`src/ball_association_ab.py:130`, `src/enroll_from_tracklet.py:1093`, `src/fast_ball_labels.py:368` and
+`src/ball_association_ab.py:131`, `src/enroll_from_tracklet.py:1093`, `src/fast_ball_labels.py:368` and
 `:507`, `src/motion_scan.py:1447` and `:1852`, `src/tiny_ball_net.py:73` and `:220`, and
 `src/track_before_detect.py:275`, `:326` and `:583`. The guard's own helpers report 289 files scanned, one
 owner module, no site that spells a number, 25 sites that read the name, and 24 planted sites at the head of
@@ -8916,7 +8916,7 @@ it serves the same rule as Worth 2; the record states the deviation, and the fil
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of this round | `annotator/server.py:109-110` serves that page and `tests/test_console_vocabulary.py:6` watches its buttons, so the form is not dead and the copy stays with its reason |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of writer AM | `annotator/unified_server.py:2144` keeps `cls._SEED_ROLES` working; a later round can read the constant in `seed_label` |
 | The citation rule reads a line and not a symbol | blind spot measured this round | it accepted `# pure helpers` for a function citation |
-| `records` of `src/store_import.py:485 FIELDS` stays an unresolved lead | lead of the walk | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| `records` of `src/store_import.py:495 FIELDS` stays an unresolved lead | lead of the walk | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2396` exports no `quadDistance` at the seam |
@@ -9000,12 +9000,12 @@ Ground: the measured pot radius stood twice — `src/event_gates.py:108 pot_pock
 `:387`) and `src/shot_pot_gate.py:138 POCKET_R_MM = 100.0` (read at `:561`, `:591`, `:779`) — while only its
 neighbouring rule was held by a case, and `git grep -n "POCKET_R_MM" -- tests` answered twelve lines that each
 compare the constant with itself. The shot-speed window stood twice in two modules that already read each
-other: `src/candidate_scan.py:70-71` (500.0 and 11000.0) against `src/info_complete_scan.py:49` and `:54`
+other: `src/candidate_scan.py:74-75` (500.0 and 11000.0) against `src/info_complete_scan.py:49` and `:54`
 (`SHOT_SPEED_MM_S`, `MAX_SPEED_MM_S`), and `git grep -n "MAX_SPEED_MM_S" HEAD -- tests` answered nothing, so
 the 11000 mm/s ceiling had no case on either side. Repair: `src/shot_pot_gate.py:138` reads
 `GateConfig().pot_pocket_r_mm`, and the writer placed the import on the blank line between the stdlib and
 `src` groups so that no line number below it moved (the file stays 1702 lines and the four citations of
-`tests/test_console_reason_table.py` stay true); `src/candidate_scan.py:70-74` read `SHOT_SPEED_MM_S` and
+`tests/test_console_reason_table.py` stay true); `src/candidate_scan.py:74-78` read `SHOT_SPEED_MM_S` and
 `MAX_SPEED_MM_S`, and `src/info_complete_scan.py` changed two trailing comments only. The new
 `tests/test_bound_owner_reads.py` (4 cases) walks the declared read sites with `ast`, fails on a site that
 spells a number in place of the owner's name, and reports a planted copy; `tests/test_shot_pot_gate.py` and
@@ -9094,7 +9094,7 @@ line, kept it, and this record states the deviation.
 | The citation rule reads a line and not a symbol | blind spot of round 70, still open | it accepted `# pure helpers` for a function citation |
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:109-110` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2144` keeps `cls._SEED_ROLES` working |
-| `records` of `src/store_import.py:485 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| `records` of `src/store_import.py:495 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2396` exports no `quadDistance` at the seam |
@@ -9292,7 +9292,7 @@ reads two sentence sources instead of one.
 | The citation rule reads a line and not a symbol | blind spot of round 70 | it accepted `# pure helpers` for a function citation |
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:109-110` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2144` keeps `cls._SEED_ROLES` working |
-| `records` of `src/store_import.py:485 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| `records` of `src/store_import.py:495 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2396` exports no `quadDistance` at the seam |
@@ -9477,7 +9477,7 @@ Round 72 answered 2276 cases and this round answers 2289. The thirteen additions
 | The citation rule reads a line and not a symbol | blind spot of round 70 | it accepted `# pure helpers` for a function citation |
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:109-110` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2144` keeps `cls._SEED_ROLES` working |
-| `records` of `src/store_import.py:485 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| `records` of `src/store_import.py:495 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2396` exports no `quadDistance` at the seam |
@@ -9562,10 +9562,10 @@ candidates name.
 
 ### Strong 1 · one `face_embeddings` row, two writers, two answers
 
-Ground: `src/store_import.py:429-430` and `src/store_pg.py:248-249` each wrote a `face_embeddings` row and each
+Ground: `src/store_import.py:439-440` and `src/store_pg.py:248-249` each wrote a `face_embeddings` row and each
 held its own statement text, and they already disagreed: for one input the import path bound
 `0.1234567890123456` (a plain float list, no cut and no rounding) while the store path bound `0.1235`
-(`float32`, cut to `EMBEDDING_DIM = 512`, rounded to four decimals). Repair: `src/store_import.py:413
+(`float32`, cut to `EMBEDDING_DIM = 512`, rounded to four decimals). Repair: `src/store_import.py:423
 FACE_COLUMNS`, `:417 FACE_INSERT` and `:422 face_row()` are the one owner, `src/store_pg.py:240` imports all
 three and `:242` executes `FACE_INSERT`, and the two dead helpers (`face_insert_sql`, `FACE_BINDS`) are gone.
 The column table is the declared order of `db/migrations/0002_user_data.sql:136-146` (`player_id`, `embedding`
@@ -9655,7 +9655,7 @@ writer does not own.
 | The citation rule reads a line and not a symbol | blind spot of round 70 | it accepted `# pure helpers` for a function citation |
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:109-110` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2144` keeps `cls._SEED_ROLES` working |
-| `records` of `src/store_import.py:485 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| `records` of `src/store_import.py:495 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2396` exports no `quadDistance` at the seam |
@@ -9843,7 +9843,7 @@ Round 74 answered 2314 cases and this round answers 2329. The fifteen additions 
 | The citation rule reads a line and not a symbol | blind spot of round 70 | it accepted `# pure helpers` for a function citation |
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:109-110` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2144` keeps `cls._SEED_ROLES` working |
-| `records` of `src/store_import.py:485 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| `records` of `src/store_import.py:495 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2396` exports no `quadDistance` at the seam |
@@ -10018,7 +10018,7 @@ Round 75 answered 2329 cases and this round answers 2347. The eighteen additions
 | The citation rule reads a line and not a symbol | blind spot of round 70 | it accepted `# pure helpers` for a function citation |
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:109-110` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2144` keeps `cls._SEED_ROLES` working |
-| `records` of `src/store_import.py:485 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| `records` of `src/store_import.py:495 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The route gate's ball-label range is a bare literal | limit of round 68 | `0 <= label <= 15` stands unnamed |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2396` exports no `quadDistance` at the seam |
@@ -10201,7 +10201,7 @@ the brief of each later walk carries the closed list.
 | The citation rule reads a line and not a symbol | blind spot of round 70 | it accepted `# pure helpers` for a function citation |
 | `annotator/index.html` keeps a fourth spelling of the shooter values | decision of round 70 | `annotator/server.py:109-110` serves that page |
 | The `_SEED_ROLES` alias stands beside `SEED_ROLES` | limit of round 70 | `annotator/unified_server.py:2144` keeps `cls._SEED_ROLES` working |
-| `records` of `src/store_import.py:485 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
+| `records` of `src/store_import.py:495 FIELDS` stays an unresolved lead | lead of round 70 | `{"verdict","shooter","note","updated_at"}` matches no other set by name |
 | Two more realms spell the ball label pair | limit of round 68 | `annotator/vision-stage.js:336` and `annotator/label.html` |
 | The timeline case holds its own distance rule | limit of round 68 | `annotator/app.js:2396` exports no `quadDistance` at the seam |
 | The state half of the document-path rule still stands | limit of round 67 | `annotator/live_processing.py:263` and `:349` and `annotator/operations.py:335` |
@@ -10272,7 +10272,7 @@ Repair: `src/datasets.py:43 HIGHLIGHT_SAMPLE_TIMES = (5, 28, 60, 90, 150, 200)` 
 Measurement: `git grep -n -F "5, 28, 60, 90, 150, 200" -- src tests tools annotator scripts` answers three lines: the owner and the two comparison assertions of the guard.
 
 ### Worth 1 - the dense-occupancy bar stood twice
-Ground: `OCC_DENSE_MIN = 0.30` stood at `src/motion_scan.py:195` and `src/shot_pot_gate.py:146`, with different reader sets (`src/track_before_detect.py:610` against `src/ball_association_ab.py:59` and `:136`) and the geometric justification written twice. `tests/test_shot_pot_gate.py:263-264` held the two numbers equal.
+Ground: `OCC_DENSE_MIN = 0.30` stood at `src/motion_scan.py:195` and `src/shot_pot_gate.py:146`, with different reader sets (`src/track_before_detect.py:610` against `src/ball_association_ab.py:60` and `:136`) and the geometric justification written twice. `tests/test_shot_pot_gate.py:263-264` held the two numbers equal.
 Repair: `src/motion_scan.py:195` stays the owner, because it measures the share of the 61x61 px occlusion window that changed; `src/shot_pot_gate.py:92` reads it (`from src.motion_scan import OCC_DENSE_MIN`) and its own definition and second justification became a pointer. `src/shot_pot_gate.py:666 from_shares(threshold: float = OCC_DENSE_MIN)` holds the owner object. `tests/test_shot_pot_gate.py` was not changed, because its two-way case still holds.
 Measurement: `git grep -n "OCC_DENSE_MIN *=" -- src tests` answers one line.
 
@@ -10313,7 +10313,7 @@ Round 77 answered 2360 cases; round 78 answers 2377: 15 cases of `tests/test_vod
 - The vod30 cadence keeps three copies by decision.
 - `src/shot_pot_gate.py` now reads `cv2` at import through `src.motion_scan`; its `:101-102` "stdlib-only import graph" claim was already untrue through `src.projection`.
 - The new guard cannot see a concatenated or generated copy of the six instants.
-- A net line reduction in `src/shot_pot_gate.py` broke `tests/test_console_reason_table.py:54 -> src/shot_pot_gate.py:952`; the writer kept the line count at 1702. A writer whose edit shifts a cited line in a file outside its scope must keep the line count.
+- A net line reduction in `src/shot_pot_gate.py` broke `tests/test_console_reason_table.py:54 -> src/shot_pot_gate.py:957`; the writer kept the line count at 1702. A writer whose edit shifts a cited line in a file outside its scope must keep the line count.
 - The brief of a walk must be checked at its task lines, not only at its title: the round-78 brief still named `walk_round73.md` and 139 commits.
 - The citation guard still proves only that a cited line holds text.
 - The open rows of rounds 51 to 77 stand.
@@ -10331,11 +10331,11 @@ Strong 2 (closed by writer BA, same commit): the one words table of `annotator/o
 
 Worth 4 (closed by writer BA, same commit): the sentence 'Loading the review workspace…' stood in `annotator/ops.js:15` and in `annotator/vision-stage.js:53` and `:174`. The owner is `annotator/app.js:2193 visionLoading: ['Loading the review workspace…', '正在加载复核工作区…']`; the ops row is deleted and the console reads the owner through the new late bridge `sharedWord`/`say` at `annotator/ops.js:904` from `:898` and `:1247-1249`; the adapter reads it at `:1781`. The ops `t()` is deliberately not owner-first, because slot names collide (ops `live:['On table','进行中']` against the owner's `live:['live','直播']`); the reason stands in the comment.
 
-Strong 3 (closed by writer BB, commit `8a4df71`): the face-store path was a bare literal in five code copies - `src/store_files.py:102`, `src/store_export.py:63` twice, `:80`, `src/store_import.py:453` and `src/eval_faces.py:95` inside PROTECTED - while its siblings `src/store_files.py:44 STATE_DOCUMENT` and `:45 SEED_DOCUMENT` are names. `src/store_files.py:56 FACE_STORE = "out/corner-pocket/face_embeddings.json"` is the one owner, the table entry keeps its indent at `:104`, and the five sites read the name; the three reader modules kept their line counts, so `src/store_export.py:63`, `:80`, `src/store_import.py:453` and `src/eval_faces.py:95` still hold their citations. Measurement: `git grep -n "out/corner-pocket/face_embeddings.json" -- src annotator tools scripts tests` answered seven lines before and three after (`src/face_id.py:7` docstring, `src/store_files.py:56` owner, `tests/test_store_roundtrip.py:230` test tree).
+Strong 3 (closed by writer BB, commit `8a4df71`): the face-store path was a bare literal in five code copies - `src/store_files.py:102`, `src/store_export.py:63` twice, `:80`, `src/store_import.py:463` and `src/eval_faces.py:95` inside PROTECTED - while its siblings `src/store_files.py:44 STATE_DOCUMENT` and `:45 SEED_DOCUMENT` are names. `src/store_files.py:56 FACE_STORE = "out/corner-pocket/face_embeddings.json"` is the one owner, the table entry keeps its indent at `:104`, and the five sites read the name; the three reader modules kept their line counts, so `src/store_export.py:63`, `:80`, `src/store_import.py:463` and `src/eval_faces.py:95` still hold their citations. Measurement: `git grep -n "out/corner-pocket/face_embeddings.json" -- src annotator tools scripts tests` answered seven lines before and three after (`src/face_id.py:7` docstring, `src/store_files.py:56` owner, `tests/test_store_roundtrip.py:230` test tree).
 
 Worth 5 (closed by writer BC, commit `40f826a`): `free_port` and `port_is_free` were byte-identical in `tests/console_fixture_build.py:77` and `:83`, `tests/console_shots.py:117` and `:123` and `tests/smoke_rating_fixture.py:100`, and `tests/test_one_shipped_tree.py:130` globbed only `test_*.py`, so its WATCHED list never saw them. The two names now stand once at `tests/_shipped.py:267` and `:274`; the three modules import them; the glob widened to `*.py` at `:170` and `:190` with 0 WATCHED-name hits over 151 files measured before the widening; three cases joined the module (10 to 13). The rule is body based, so a same-named helper with another body (`tests/test_public_board.py:285`, `tests/load_public_board.py`) stays legal and out of WATCHED.
 
-Bites. Writer BA on `annotator/app.js` (`ef811eca → f6bc4a2d → ef811eca`, two failures naming the moved owner row). The Lead on `annotator/ops.js` (`45616a7b → 45616a7b` around one edit, `FAIL: test_both_rows_of_each_label_read_one_word` with `Lists differ: ['移除'] != ['删除']`). Writer BB on `src/eval_faces.py` (`d0e7a94d → 3f982dcf → d0e7a94d`, "the PROTECTED list of src/eval_faces.py must read the name"). The Lead on `src/store_import.py` (`6b005490 → f5e5452e → 6b005490`, `Lists differ: ['src/store_files.py:56'] != ['src/store_files.py:56', 'src/store_import.py:453']`). Writer BC on `tests/smoke_rating_fixture.py` and, as extra evidence, on `tests/console_shots.py` (`f6011541 → dc7d8a37 → f6011541`, both bodies named). The Lead on `tests/console_fixture_build.py` (`9ed9cc75 → 1b226c1f → 9ed9cc75`, `Lists differ: ['port_is_free'] != []`).
+Bites. Writer BA on `annotator/app.js` (`ef811eca → f6bc4a2d → ef811eca`, two failures naming the moved owner row). The Lead on `annotator/ops.js` (`45616a7b → 45616a7b` around one edit, `FAIL: test_both_rows_of_each_label_read_one_word` with `Lists differ: ['移除'] != ['删除']`). Writer BB on `src/eval_faces.py` (`d0e7a94d → 3f982dcf → d0e7a94d`, "the PROTECTED list of src/eval_faces.py must read the name"). The Lead on `src/store_import.py` (`6b005490 → f5e5452e → 6b005490`, `Lists differ: ['src/store_files.py:56'] != ['src/store_files.py:56', 'src/store_import.py:463']`). Writer BC on `tests/smoke_rating_fixture.py` and, as extra evidence, on `tests/console_shots.py` (`f6011541 → dc7d8a37 → f6011541`, both bodies named). The Lead on `tests/console_fixture_build.py` (`9ed9cc75 → 1b226c1f → 9ed9cc75`, `Lists differ: ['port_is_free'] != []`).
 
 Suites at the committed tree: `Ran 2396 tests in 222.517s`, `OK (skipped=53)`; node 232 pass, 23 pass, 114 passed (0 fail each). Round 78 answered 2377 cases, so round 79 added the 12 cases of tests/test_console_round79_owners.py, 4 of tests/test_face_store_path_owner.py and 3 of tests/test_one_shipped_tree.py.
 
@@ -10349,7 +10349,7 @@ Walk at HEAD `6516801` (report `/tmp/dshsess/walk_round80.md`, 260 lines, with `
 
 | # | Candidate | Decision and outcome |
 | --- | --- | --- |
-| Strong 1 | `src/store_pg.py:156` re-spelled the owner's `INSERT INTO ops_events ...` (`src/store_import.py:235`), and `src/store_pg.py:377-379` re-spelled `frame_corrections` (`src/store_import.py:598-600`), while `src/store_pg.py:22-23` claimed one mapping. The class guard `tests/test_face_row_owner.py:54` covered one table only. | Commit `24e3948`: `src/store_import.py:617-627` owns `OPS_EVENT_INSERT`, `CORRECTION_INSERT` and `CORRECTION_UPSERT`; the store reads the names at `:151-152` and `:372-375`; the upsert tail is named beside the owner with its reason. New `tests/test_row_statement_owner.py` (9 cases). The duplicate scan answered `DUP {ops_events, frame_corrections}` before and `DUP {}` after, over 19 tables. |
+| Strong 1 | `src/store_pg.py:156` re-spelled the owner's `INSERT INTO ops_events ...` (`src/store_import.py:245`), and `src/store_pg.py:377-379` re-spelled `frame_corrections` (`src/store_import.py:608-610`), while `src/store_pg.py:22-23` claimed one mapping. The class guard `tests/test_face_row_owner.py:54` covered one table only. | Commit `24e3948`: `src/store_import.py:627-637` owns `OPS_EVENT_INSERT`, `CORRECTION_INSERT` and `CORRECTION_UPSERT`; the store reads the names at `:151-152` and `:372-375`; the upsert tail is named beside the owner with its reason. New `tests/test_row_statement_owner.py` (9 cases). The duplicate scan answered `DUP {ops_events, frame_corrections}` before and `DUP {}` after, over 19 tables. |
 | Strong 2 | `PROTECTED` had two owners that disagreed: `src/enroll_from_tracklet.py:150` held two names and no reader read it, against the live five-name list at `src/eval_faces.py:90` applied at `:720`, with a third hand-written copy in the enrolment cases. | Commit `ff09bd6`: `src/eval_faces.py:92` owns the list, the dead copy is gone, and the tests read the owner. New `tests/test_protected_paths_owner.py` (4 cases). Three citations into the moved function were re-pointed. |
 | Worth 3 | The single-frame note stood at `src/frame_inference.py:221` and as the stage fallback at `annotator/pipeline_stages.py:860`, with a substring guard only. | Commit `e12f5c7`: `src/frame_inference.py:27 EVENT_NOTE_SINGLE_FRAME` is the owner, the stage reads it at `:858`, and the assertions are equalities. New `tests/test_pipeline_note_owner.py` (12 cases). |
 | Worth 4 | `docs/corner-pocket-operations.md:40` restated the console expiry sentence and nothing held it. | Same commit: the document names `annotator/ops.js:970` and holds no copy. |
@@ -10368,7 +10368,7 @@ New open rows. Writer WA: every line of `src/store_import.py` after `:607` moved
 documents of `docs/`.
 
 **Strong 1 - the dense queue answered one gate reason for every pot.** `src/dense_queue.py:250` wrote
-`codes = ["cloth_occluded_at_disappearance"]` for every served pot, while `src/shot_pot_gate.py:1521-1523` chooses
+`codes = ["cloth_occluded_at_disappearance"]` for every served pot, while `src/shot_pot_gate.py:1526-1528` chooses
 between three reasons (`cloth_occluded_at_disappearance` when the occlusion status is `occluded`,
 `occlusion_channel_silent` when it is `silent`, and `pocket_distance_within_uncertainty` otherwise), and the
 fixture of `tests/test_queue_decision.py:122-139` never varied the status, so no case could see the copy. Writer WA
@@ -10423,7 +10423,7 @@ three console suites and 41 of the 43 documents of `docs/`.
 
 **Strong 1 - the tiny-ball production cut had one owner and eight copies.** `annotator/pipeline_stages.py:79
 BALL_THRESHOLD = 0.425` was read at `:512` alone, while eight literal copies stood in the harnesses
-(`src/ball_association_ab.py:81`, `src/ball_fp_audit.py:1032`, `tests/ball_dense_events.py:297`,
+(`src/ball_association_ab.py:82`, `src/ball_fp_audit.py:1032`, `tests/ball_dense_events.py:297`,
 `tests/ball_stack_ab.py:203`, `:255`, `:303`, `:331`, `:377`) and no case bound a copy to the owner. Writer WD
 gave the cut one home and made every deciding site read `BALL_THRESHOLD`; the new
 `tests/test_ball_threshold_owner.py` holds 7 cases (commit `eaecff2`). Its bite answered
@@ -10446,7 +10446,7 @@ ran the guards, re-pointed five citations that the moved lines put out of date
 Commit `7bdb7ce`; the new `tests/test_anchor_name_owner.py` holds the cases, and
 `tests/test_sql_domain_parity.py` grew from 17 to 22 cases.
 
-**Note 1 - a case that compared a function with itself.** `tests/test_calib_mapping_audit.py:253` compared
+**Note 1 - a case that compared a function with itself.** `tests/test_calib_mapping_audit.py:256` compared
 `probe.claim_px(mm)` with `probe.px(mm)` while the probe carried no `claim_inverse`, so the fallback was compared
 with the function it falls back to and the case could not fail. The Lead made the case state two facts: the probe
 carries no claim inverse, and a probe that carries another claim inverse answers with that other mapping. Commit
@@ -10654,7 +10654,7 @@ SHOOTER_CHOICES`) and the migration copy (`db/migrations/0002_user_data.sql:166`
 `tests/test_console_round70_vocabulary.py`, which read three files (`:58-60`) and said in its own
 docstring at `:36-39` that the guard of the list page "belongs to a later round".  A value the page
 adds lands in `out/.../annotations.json` unchecked and fails the CHECK of the migration at the store
-import (`src/store_import.py:538-540`), so the whole import of the folder stops.
+import (`src/store_import.py:548-550`), so the whole import of the folder stops.
 Repair (writer WG, commit `0d9c434`): the module reads `annotator/index.html` as a fourth file
 (`:63 LIST`, `:68 LIST_TEXT`, `:90 LIST_SELECT`, `:142 page_shooter_values`) and holds the option set
 of the shooter select equal to the owner tuple in both directions.  The module rose from 10 cases to
@@ -10909,7 +10909,7 @@ correction.
 
 ### Open rows for a later round
 
-1. `src/calib_mapping_audit.py:72 SCAN_QUAD` and `src/tiny_ball_net.py:65 CORNERS` build the
+1. `src/calib_mapping_audit.py:75 SCAN_QUAD` and `src/tiny_ball_net.py:65 CORNERS` build the
    scan-corners path from parts.  The guard of round 89 records them as an exception.
 2. `src/store.py:93 "calibration": "calib_{ds}.json"` is the sibling row with no owner.
 3. `src/frame_inference.py:191` is cited for a statement that stands at `:203-205`.  The citation
@@ -11194,7 +11194,7 @@ The walk `/tmp/dshsess/walk_round93.md` (233 lines) answered
 Strong 1: the guard of round 89 filtered its findings to the `spells` kind, so two
 hand-built copies of the scan-corner path stayed hidden.  Writer WZ made `problems()`
 report every kind.  The two readers read the name of the owner:
-`src/calib_mapping_audit.py:75 SCAN_QUAD = ROOT / SCAN_CORNERS` and
+`src/calib_mapping_audit.py:78 SCAN_QUAD = ROOT / SCAN_CORNERS` and
 `src/tiny_ball_net.py:65`.  The owner holds `src/calib_segments.py:185
 SCAN_CORNERS = "out/scan30/corners.json"`.  The built path is byte for byte the same
 as before, and `tests/test_scan_corners_owner.py` holds 13 cases.  The delivery sha1:
@@ -11204,9 +11204,9 @@ as before, and `tests/test_scan_corners_owner.py` holds 13 cases.  The delivery 
 hand-built path back at `src/tiny_ball_net.py:65`:
 `c35be73367480afe043e18ad1c8176d0be489043 -> 5c239ab8bac61241cbe60763fe99192db234587a -> c35be73367480afe043e18ad1c8176d0be489043`,
 red with `Lists differ: [] != ["src/tiny_ball_net.py:65 builds 'corners.json'", ...]`.
-The Lead bit `src/calib_mapping_audit.py:75`, which no writer bit:
+The Lead bit `src/calib_mapping_audit.py:78`, which no writer bit:
 `fc1b9dd80595bef30b454cefe36482ea1da42244 -> ec1d2ae3bc5f746b6e3ecdf767199f28cb2b4905 -> fc1b9dd80595bef30b454cefe36482ea1da42244`,
-red with the same case and the site `src/calib_mapping_audit.py:76`.
+red with the same case and the site `src/calib_mapping_audit.py:79`.
 
 Strong 2: the name `calib_vod30.json` stood in five modules.  Writer XA gave it one
 home: `src/calib_segments.py:71 CALIBRATION = "calib_{dataset}.json"` and
@@ -11515,8 +11515,8 @@ no part of the quoted text and the new number holds it:
    `annotator/ops.js:155` and `:160`.
 4. `annotator/ops.css:989` cited `annotator/ops.js:88` while the button is built at
    `annotator/ops.js:163`.
-5. `src/ops_event_log.py:31` cited `src/store_import.py:224-228` while the insert
-   loop stands at `src/store_import.py:238-242`.
+5. `src/ops_event_log.py:31` cited `src/store_import.py:234-238` while the insert
+   loop stands at `src/store_import.py:248-252`.
 
 The writer's report named a sixth site outside its scope,
 `tests/test_event_retention.py:26`, with the same wrong number; the Lead repaired
@@ -12481,7 +12481,7 @@ the required read of `:20` instead.
 The shipped schema declared the columns, and `src/store_import.py` spelled the same names a second
 time in its INSERT and SELECT statements: `db/migrations/0002_user_data.sql:22` (`joined_at`), `:49`
 and `:66` (`tournament_id`), `:69` to `:79` (`side_a`, `side_b`, `score_a`, `score_b`, `table_no`,
-`winner_id`, `completed_at`, `source_a`, `source_b`) against `src/store_import.py:219`, `:218`, `:247`,
+`winner_id`, `completed_at`, `source_a`, `source_b`) against `src/store_import.py:229`, `:218`, `:247`,
 `:259-260`, `:273-274`, `:319-322`.  No test named one of those columns
 (`grep -rEn` over `tests/` answered 0), and the cases that would catch a rename need a live database
 (`tests/test_store_import.py:20` `HAVE_DB = bool(os.environ.get(db.ENV))`, `:53`
@@ -12495,17 +12495,17 @@ statements in the importer (17 INSERT, 19 SELECT) over 17 written tables and 16 
 distinct named columns, and an explicit `DELIBERATELY_UNUSED` map with five entries.  The two shipped
 files did not change: `db/migrations/0002_user_data.sql` `f7cb6cea`, `src/store_import.py` `434475d4`.
 Its own bites: `db/migrations/0002_user_data.sql:71` `score_a` -> `score_a_x` (`f7cb6cea` ->
-`f8d99c2b` -> `f7cb6cea`, 2 red), `src/store_import.py:264` `table_no` -> `table_no_x` (`434475d4` ->
+`f8d99c2b` -> `f7cb6cea`, 2 red), `src/store_import.py:274` `table_no` -> `table_no_x` (`434475d4` ->
 `3b960505` -> `434475d4`, 2 red), `db/migrations/0002_user_data.sql:77` `completed_at` ->
-`completed_at_x` (2 red), `src/store_import.py:278` `joined_at` -> `joined_at_x` (2 red) and
-`src/store_import.py:211` `SET position` -> `SET position_x` (1 red).  The Lead bit
-`src/store_import.py:251` `absent` -> `absent_x` (`434475d4` -> `0a4f7fc2` -> `434475d4`, 2 red,
+`completed_at_x` (2 red), `src/store_import.py:288` `joined_at` -> `joined_at_x` (2 red) and
+`src/store_import.py:221` `SET position` -> `SET position_x` (1 red).  The Lead bit
+`src/store_import.py:261` `absent` -> `absent_x` (`434475d4` -> `0a4f7fc2` -> `434475d4`, 2 red,
 naming that line and `69 != 70` in the pin case) and `db/migrations/0002_user_data.sql:137`
 `face_embeddings.id` -> `id_x` (`f7cb6cea` -> `4eb84ec4` -> `f7cb6cea`, 2 red, naming the
 deliberately-unused entry and `db/migrations/0002_user_data.sql:137 (face_embeddings.id_x)`), so both
 directions are live.  The guard reads the later migration too, because
 `db/migrations/0003_json_documents.sql:32` declares `identity_clusters.has_face_samples`, which
-`src/store_import.py:378` and `:393` name.
+`src/store_import.py:388` and `:393` name.
 
 ### Worth and Note rows
 
@@ -13048,7 +13048,7 @@ Worth 1: the refusal table and its raise sites.  The cases `tests/test_refusal_i
 `test_the_table_names_every_raised_sentence` and `test_every_code_the_console_reads_has_a_raising_site`
 read both copies, so the row is a duplicate that a case already holds equal.
 Worth 2: `out/identity/clusters.json` in `src/eval_faces.py:96`, `src/store_export.py:60`,
-`src/store_files.py:110` and `src/store_import.py:358`, held by `tests/test_store_roundtrip.py:203`.
+`src/store_files.py:110` and `src/store_import.py:368`, held by `tests/test_store_roundtrip.py:203`.
 Note 1: the citation `annotator/vision-stage.js:450` of the sentence `no cloth census measured`.
 The live copy stands at `annotator/vision-stage.js:448`.  The round repaired the ledger line.
 
@@ -13432,7 +13432,7 @@ The other rows of the walk wait for a later round: the `"DELETE FROM {table}"` s
 
 The Lead bit a site of each row that the row's writer did not use, and restored every file
 byte for byte: `src/pid_shooter.py:126`, `src/store_files.py:205` with the reader
-`annotator/server.py:49`, `src/scan_events.py:65` with the reader `src/candidate_scan.py:437`
+`annotator/server.py:49`, `src/scan_events.py:65` with the reader `src/candidate_scan.py:441`
 and the page `annotator/index.html:83`, `src/calib_segments.py:389` with the reader
 `src/table_refine.py:867`, and the home of `UNKNOWN_DATASET` with a planted literal at
 `annotator/unified_server.py:1133`.
@@ -13495,3 +13495,120 @@ Three more rows of the store lane and five rows of the console lane were repaire
 6. A guard of an earlier round that pins a number of another file moves when this round
    inserts lines above it.  Measure the live line and move the pin; the run of the whole
    suite is the only instrument that finds every one of them.
+
+## Round 110
+
+Base commit: 405a58a "Give the round 109 facts one home each".
+
+### The two walks
+
+The round had two walks, and they disagreed, so both stand on record.
+
+- The read-only walk subagent 5e93809f wrote /tmp/dshsess/walk_round110.md (191 lines, HEAD 405a58a,
+  `git status --porcelain` empty) and answered `no Strong candidate - 0 Strong, 4 Worth, 10 Note`.
+  Its Worth rows: the `DELETE FROM {table}` sentence (3 lines, 2 files, no in-tree reader), the
+  document `candidates_selected.json` (2 lines), the sentence `cannot open {video}` (19 live lines in
+  11 files, no owner for CLI sentences yet) and the crop documents `ctx.json` (11 lines, 4 writers)
+  and `meta.json` (19 lines, 2 writers, no module owns the crops directory).
+- The Lead walk /tmp/dshsess/walk_round110_lead.md (53 lines) answered `1 Strong, 2 Worth, 3 Note`.
+  Its Strong row was the ops table names (home src/store_export.py:43 `TABLES`).  The Lead re-measured
+  that row and moved it to Worth: a SQL sentence must spell a table name to run, and
+  scripts/pool-write-fingerprint.sql cannot read a python name, so eighteen constants would not make
+  the SQL clearer.  Reason recorded in /tmp/dshsess/plan_r110.md.
+- The Lead also measured the two seeds it sent to the walk: `"median"` is 14 lines of local keys
+  (each file measures a different median), and `"ball_id"` is a wire key.  The walk rated both lower
+  than the Lead did, and the agreement is recorded here.
+
+### The rows this round ships
+
+- Row 1, the wire key `ball_id`: home `BALL_ID_KEY` in src/shot_pot_gate.py; guard
+  tests/test_ball_id_key_owner.py; writer W1 (subagent 4e6447a3); 18 cases.  The writer bit the home
+  with `"ball_id_x"` and 3 cases went red.  The Lead bit src/ball_association_audit.py:85 and the case
+  named `BALL_ID_KEY` of src/shot_pot_gate.py.  The restore returned sha1 `ab7ec445e4d7`.
+- Row 2, the document `candidates_selected.json`: home `CANDIDATES_NAME` in src/candidate_scan.py;
+  guard tests/test_candidates_selected_name_owner.py (15 cases).  The writer bit the home with
+  `candidates_selected_x.json` and 4 cases went red.  The Lead bit src/calib_mapping_audit.py:80 and
+  the case named `CANDIDATES_NAME` of src/candidate_scan.py.  The restore returned sha1
+  `b69f4fd95976`.
+- Row 3, the sentence that empties a table: one helper in src/store_import.py; guard
+  tests/test_clear_table_owner.py (10 cases); writer W3 (subagent 0afa67e8).  The writer bit the
+  sentence with a doubled space and 2 cases went red.  The Lead bit src/store_pg.py:158 and the case
+  named the second spelling of the sentence.  The restore returned sha1 `7ff082866e75`.
+
+| # | Fact | Home | Writers and readers | Guard |
+|---|------|------|---------------------|-------|
+| 1 | the key `ball_id` | `src/shot_pot_gate.py:895` `BALL_ID_KEY = "ball_id"` | 5 sites of `src/shot_pot_gate.py`, 30 of `src/dense_queue.py`, 8 of `src/ball_association_audit.py`, 2 of `src/ball_association_ab.py` | `tests/test_ball_id_key_owner.py` (18 cases) |
+| 2 | the document `candidates_selected.json` | `src/candidate_scan.py:70` `CANDIDATES_NAME` | writer `src/candidate_scan.py:637`; reader `src/calib_mapping_audit.py:80`; the skip guard `tests/test_calib_mapping_audit.py:103` | `tests/test_candidates_selected_name_owner.py` (15 cases) |
+| 3 | the sentence `DELETE FROM {table}` | `src/store_import.py:148` `clear_table(conn, table)`, the sentence at `:155` | the call sites `src/store_import.py:183`, `:212`, `src/store_pg.py:158` | `tests/test_clear_table_owner.py` (10 cases) |
+
+### The next round starts here
+
+Round 111 takes the row the walk of round 110 missed: the built-in dataset name `vod30`, measured in
+/tmp/dshsess/scan_dataset_row.md (the python home stands beside src/datasets.py:35 `STATIC`; the page
+home stands at annotator/app.js:64 `BUILT_IN_DATASET`; ten of the twelve python hotspots already
+import src.datasets, so only src/calib_segments.py and src/check_app_quad.py need a new edge, and
+src/datasets.py imports no module that could close a cycle).  The plan stands in
+/tmp/dshsess/plan_r111.md, with the crop documents `ctx.json` and `meta.json` (home candidates
+src/make_ctx.py:26 and :24) as its second row and the `cannot open {video}` sentence deferred until a
+module owns the CLI sentences.
+
+### Bites
+
+Every row was bitten twice: once by its writer on the home, and once by the Lead on a site the writer
+did not use.  Every bite reddened a case with the `path:line` and the line text, and every restore
+returned the sha1 of the file.
+
+| Row | Writer bite | Lead bite | sha1 after the restore |
+|-----|-------------|-----------|------------------------|
+| 1 | `src/shot_pot_gate.py:895` -> `"ball_id_x"`, 3 cases red | `src/ball_association_audit.py:85` -> a literal: `the site does not read BALL_ID_KEY of src/shot_pot_gate.py` | `ab7ec445e4d7` |
+| 2 | `src/candidate_scan.py:70` -> `candidates_selected_x.json`, 4 cases red | `src/calib_mapping_audit.py:80` -> a literal: `the reader does not read CANDIDATES_NAME of src/candidate_scan.py` | `b69f4fd95976` |
+| 3 | `src/store_import.py:155` -> a doubled space, 2 cases red | `src/store_pg.py:158` -> the old sentence: `'DELETE FROM {table}' is a second spelling of the sentence` | `7ff082866e75` |
+
+### The drift this round caused
+
+The inserts of the round moved the pinned numbers of eight guards of earlier rounds.  The Lead
+repaired them by the same-text rule, and every module answered OK after the repair.
+
+- `tests/test_pocket_dist_key_owner.py`: `src/candidate_scan.py` 330/437/438 -> 334/441/442, and
+  `src/shot_pot_gate.py` 1407/1566/1581/1598 -> 1412/1571/1586/1603 (15 cases OK).
+- `tests/test_shot_pot_report_key_owner.py`: the owner 165/166 -> 167/168 and the writer 1600 -> 1605
+  (17 cases OK).
+- `tests/test_annotations_name_owner.py`: the `src/store_import.py` rows 530/531/562/590/709 ->
+  540/541/572/600/719 (6 cases OK).
+- `tests/test_candidates_selected_name_owner.py`: its own docstring cited the numbers of the walk
+  (633/77/100); the live lines are 637/80/103.
+- `tests/test_calib_mapping_keys_owner.py`: the 14 `src/calib_mapping_audit.py` rows 271/272/273/
+  274/276/278/279/458/461/462/585 -> 274/275/276/277/279/281/282/461/464/465/588 (16 cases OK).
+- `tests/test_corners_spec_owner.py`: the two reader lines `src/calib_mapping_audit.py` 437/609 ->
+  440/612 (11 cases OK).
+- `tests/test_schema_column_owner.py`: the importer pins `UPDATE_LINES` (211, 215) -> (221, 225) and
+  `SKIPPED_LINES` (705, 708) -> (715, 718), each by the ten lines of the new helper (7 cases OK).
+
+### Citations
+
+The sweep ran as `python3 tools/citation_sweep.py --base 405a58a --write` with `--hold` on the 15
+files the round touched, the rule of round 109.  It answered `citations replaced: 91 in 9 files
+(stamp written)`, and `tests/test_citation_lines` answered 11 cases OK after it.
+
+### Suites
+
+- python: `./scripts/pool-test.sh python` -> `Ran 3116 tests in 515.955s`, `OK (skipped=53)`.  The
+  first run of the round answered `Ran 3116 tests in 553.162s`,
+  `FAILED (failures=6, errors=1, skipped=53)`.  The second run is the run of record.
+- node: `./scripts/pool-test.sh js` rc=0; `tests/test_ops.js` pass 232 / fail 0; `tests/test_board.js`
+  pass 23 / fail 0; `tests/test_app_timeline.js` 114 passed, 0 failed; source-text assertions left: 75.
+
+### Lessons
+
+1. Hold every file that a writer of the round touched.  The round obeyed the rule of round 109 and the
+   guard `tests/test_citation_lines.py` answered green on the first try.
+2. A guard can state the numbers of the walk in its own docstring.  Those numbers are stale against
+   the round's own edit, so the Lead must measure a guard's citations as well as its cases.
+3. The inserts of a round reach the pinned numbers of guards of other rounds.  This round repaired
+   four guards before the full suite, and the suite still found six pins of three more guards.  Run
+   the whole suite, repair every red, and run it again.
+4. One error was not a pin: a temporary-directory cleanup raced a writer under
+   `tests/test_vod_import.py`.  The module passed alone and in the second run, so the round records
+   it as a flake and not as a repair.
+5. A walk that answers `no Strong candidate` still leaves payable Worth rows.  This round shipped
+   three of them and records the disagreement between the two walks of the round.

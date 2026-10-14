@@ -43,9 +43,9 @@ from src.store_files import (BALL_SETS, SEED_DOCUMENT, STATE_DOCUMENT, correctio
 # The document side of the event log is trimmed by its one owner (src.ops_event_log),
 # so this store holds no copy of the retention bound.
 from src.ops_event_log import trim
-# The psycopg JSON wrapper and the two row statements this store executes have one home,
-# src/store_import.py (the mapping above is its OperationsSet; the face row reads it too).
-from src.store_import import CORRECTION_INSERT, CORRECTION_UPSERT, OPS_EVENT_INSERT, jsonb
+# The psycopg JSON wrapper, the two row statements and the table-empty sentence have
+# one home, src/store_import.py (OperationsSet maps above; the face row reads it too).
+from src.store_import import CORRECTION_INSERT, CORRECTION_UPSERT, OPS_EVENT_INSERT, clear_table, jsonb
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and JsonStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -155,7 +155,7 @@ class PostgresStore:
         event = dict(id=uid(), createdAt=timestamp(), revision=doc["revision"], action=action, context=context)
         doc["events"] = trim(doc.get("events", []) + [event])
         for table in ("matches", "entrant_members", "entrants", "tournaments", "notes", "sources", "ops_meta"):
-            conn.execute(f"DELETE FROM {table}")
+            clear_table(conn, table)
         OperationsSet().write(conn, dict(doc, events=[]))  # ops_meta, players, tournaments, notes, sources
         conn.execute(OPS_EVENT_INSERT,
                      (event["revision"], event["id"], event["createdAt"], action, jsonb(context)))

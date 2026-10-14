@@ -145,6 +145,16 @@ class Snapshot:
         return [rel for rel, digest in self.md5s.items() if md5(self.root / rel) != digest]
 
 
+def clear_table(conn, table: str) -> None:
+    """Empty one ops table.  One home for the DELETE sentence.
+
+    ``src/store_pg.py`` imports this name, because that store clears the same
+    tables before it writes them again.  The table names stay at the call sites,
+    where each set states the tables it owns; only the sentence lives here.
+    """
+    conn.execute(f"DELETE FROM {table}")
+
+
 def _count(conn, table, where="", params=()):
     return conn.execute(f"SELECT count(*) FROM {table} {where}", params).fetchone()[0]
 
@@ -170,7 +180,7 @@ class DataSet:
 
     def clear(self, conn):
         for table in reversed(self.tables):
-            conn.execute(f"DELETE FROM {table}")
+            clear_table(conn, table)
 
 
 # -- operations (design section 2) ---------------------------------------------
@@ -199,7 +209,7 @@ class OperationsSet(DataSet):
         # players are upserted in write(): deleting them would unbind identity clusters
         for table in ("ops_events", "matches", "entrant_members", "entrants", "tournaments",
                       "notes", "sources", "ops_meta"):
-            conn.execute(f"DELETE FROM {table}")
+            clear_table(conn, table)
 
     def write(self, conn, s):
         conn.execute("INSERT INTO ops_meta (id, revision, settings, extra) VALUES (true, %s, %s, %s)",

@@ -440,8 +440,8 @@ class TheDatabaseTest(unittest.TestCase):
     def test_the_table_keeps_every_row_while_the_count_reports_the_bound(self):
         """Recorded disagreement: `OperationsSet.write` inserts every row of the document,
         so the table is unbounded, and `OperationsSet.actual` reports at most the bound
-        (src/store_import.py:181) while `OperationsSet.expected` counts the document with
-        no cap (src/store_import.py:335).  The value 500 is not asserted here; it is pinned
+        (src/store_import.py:191) while `OperationsSet.expected` counts the document with
+        no cap (src/store_import.py:345).  The value 500 is not asserted here; it is pinned
         by tests/test_operations.py:324."""
         from src.store_import import OperationsSet
         bound = owner_number()
@@ -453,7 +453,7 @@ class TheDatabaseTest(unittest.TestCase):
         OperationsSet().write(writer, document)
         inserted = [sql for sql, _ in writer.queries if sql.startswith("INSERT INTO ops_events")]
         self.assertEqual(len(inserted), bound + 100,
-                         "src/store_import.py:225 inserts every row of the document, so the "
+                         "src/store_import.py:235 inserts every row of the document, so the "
                          "table keeps every event and is not the bounded side")
         counts = OperationsSet().actual(_Recorder(events=bound + 100))
         self.assertEqual(counts["ops_events"], bound,
@@ -463,7 +463,7 @@ class TheDatabaseTest(unittest.TestCase):
                          "the document side counts every row it was given, with no cap")
         self.assertNotEqual(expected["ops_events"], counts["ops_events"],
                             "so a document with more rows than the bound cannot be verified "
-                            "against the table: src/store_import.py:661 refuses it.  Recorded, "
+                            "against the table: src/store_import.py:671 refuses it.  Recorded, "
                             "not changed.")
 
 

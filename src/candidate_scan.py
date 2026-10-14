@@ -65,6 +65,10 @@ SMALL_W, SMALL_H = WORKING_FRAME[0], WORKING_FRAME[1]
 MOTION_MIN_SHOT = 8.0
 MIN_BALL_AREA, MAX_BALL_AREA = 14.0, 9000.0
 
+# The queue of selected candidates is one document, and this scanner writes it.
+# src/calib_mapping_audit.py reads the same name under its own scan30 set.
+CANDIDATES_NAME = "candidates_selected.json"
+
 
 @dataclass
 class ScanConfig:
@@ -630,7 +634,7 @@ def write_plan(scan_path, out_dir="out/scan30", top_pots: int = 12, top_shots: i
                       "candidate": {k: v for k, v in e["candidate"].items()
                                     if k not in ("record", "pair_record")}}
                      for e in plan["plan"]]}, indent=1))
-    (Path(out_dir) / "candidates_selected.json").write_text(json.dumps(selected, indent=1))
+    (Path(out_dir) / CANDIDATES_NAME).write_text(json.dumps(selected, indent=1))
     return {"plan": plan, "selected": selected, "cfg": cfg, "counts": pruned["counts"]}
 
 

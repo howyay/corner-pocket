@@ -51,8 +51,8 @@ CONSTANT = re.compile(r"const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*'([^']*)'")
 # new entry needs a comment here and a row that loses its producer must leave the set.
 ROWS_WITHOUT_A_PRODUCER = {
     # ``identity_swap_suspected`` and ``parked_in_jaws_possible`` are boolean fields of
-    # PotEvent (src/shot_pot_gate.py:976, :968).  The gate copies them into a Rejection's
-    # ``numbers`` block (src/shot_pot_gate.py:1490) and into the event (src/shot_pot_gate.py
+    # PotEvent (src/shot_pot_gate.py:981, :968).  The gate copies them into a Rejection's
+    # ``numbers`` block (src/shot_pot_gate.py:1495) and into the event (src/shot_pot_gate.py
     # :1490), and the dense queue copies them into its own ``numbers`` block
     # (src/dense_queue.py:295-296).  Neither is ever an element of a ``reasons`` list, so
     # no rule here can reach it.  The rows stay: the screen prints these notes in words.
@@ -286,7 +286,7 @@ def rejection_code(call):
     """Return the code argument of a ``Rejection(...)`` call.
 
     The code is the keyword ``code`` or the second positional argument, as in every call
-    of src/shot_pot_gate.py:1236 to :1568.
+    of src/shot_pot_gate.py:1241 to :1568.
     """
     for keyword in call.keywords:
         if keyword.arg == 'code':
@@ -315,7 +315,7 @@ def derived_gate_values():
       of the pot event, src/dense_queue.py:241-250).
     * ``src/shot_pot_gate.py``: the code argument of every ``Rejection(...)`` call, and
       every value assigned to a name or attribute ``reason``/``reasons``, which covers the
-      branches of the ternary at src/shot_pot_gate.py:1505-1507.
+      branches of the ternary at src/shot_pot_gate.py:1510-1512.
     """
     found: dict = {}
     for path in GATE_PRODUCERS:

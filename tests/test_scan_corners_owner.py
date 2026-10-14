@@ -28,7 +28,7 @@ The cases below hold eight things:
    module that builds the path by hand;
 8. a copy that a module builds from parts is reported with its file and its line.
 
-Round 93 found two more copies of the path, at ``src/calib_mapping_audit.py:72``
+Round 93 found two more copies of the path, at ``src/calib_mapping_audit.py:75``
 and ``src/tiny_ball_net.py:65``.  Each one joined the parts by hand, and the case
 at point 2 asked for ``'spells'`` findings only, so the guard hid both.  The two
 modules read the owner now, and the case reads every kind.

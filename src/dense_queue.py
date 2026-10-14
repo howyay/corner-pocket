@@ -78,7 +78,7 @@ from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 # The two pocket keys of a served pot row own their spelling in
 # src/scan_events.py, so this writer reads the names there.
 from src.scan_events import NEAREST_POCKET_KEY, POCKET_DIST_MM_KEY  # noqa: E402
-from src.shot_pot_gate import RAIL_THRESHOLD_KEYS, REPORT_THRESHOLD_KEYS  # noqa: E402
+from src.shot_pot_gate import BALL_ID_KEY, RAIL_THRESHOLD_KEYS, REPORT_THRESHOLD_KEYS  # noqa: E402
 
 # The work space of this queue and the native frame it came from.  ``src.ball_scale``
 # owns both: the queue scales the cloth quad and the millimetre mapping by them.
@@ -186,7 +186,7 @@ def shot_event(shot: dict, H, artifact) -> dict:
     bars = shot.get("thresholds") or {}
     numbers = {
         "disp_mm": displacement,               # projected, so the rail's own line renders
-        "disp_color": shot["ball_id"].split("-", 1)[1],
+        "disp_color": shot[BALL_ID_KEY].split("-", 1)[1],
         "dense_net_displacement_px": shot.get("net_displacement_px"),
         "dense_path_length_px": shot.get("path_length_px"),
         "dense_net_bar_px": bars.get("min_net_displacement_px"),
@@ -205,7 +205,7 @@ def shot_event(shot: dict, H, artifact) -> dict:
         "verified": False,                      # no human verdict exists for it
         "source": "dense-track",
         "window_s": _window(shot["onset_t"], shot.get("duration_s")),
-        "color": shot["ball_id"].split("-", 1)[1],
+        "color": shot[BALL_ID_KEY].split("-", 1)[1],
         "tier": "window",                       # no claim geometry to verify against
         "origin": "dense-track",
         "from_mm": start_mm, "to_mm": end_mm,
@@ -215,14 +215,14 @@ def shot_event(shot: dict, H, artifact) -> dict:
                  "reasons": ["dense_motion_onset", "window_grade_no_claim_to_check"],
                  "codes": ["dense_motion_onset", "window_grade_no_claim_to_check"],
                  "numbers": numbers,
-                 "dup_count": 1, "colors_merged": [shot["ball_id"].split("-", 1)[1]]},
+                 "dup_count": 1, "colors_merged": [shot[BALL_ID_KEY].split("-", 1)[1]]},
         "geometry_check": {"claim_start_mm": None, "claim_end_mm": None,
                            "measured_disp_mm": displacement, "gap_px": None, "tol_px": None,
                            "matches": None,
                            "note": "the onset comes from the track itself; there is no "
                                    "separate claim to check the move against, so this is "
                                    "window grade"},
-        "provenance": provenance(artifact, {"ball_id": shot["ball_id"],
+        "provenance": provenance(artifact, {BALL_ID_KEY: shot[BALL_ID_KEY],
                                             "group_id": shot.get("group_id")}),
     }
 
@@ -259,7 +259,7 @@ def pot_event(pot: dict, H, artifact, served_reason: str | None = None,
     # above would contradict it (the occlusion status, the millimetre verdict).
     gate_reason = pot.get("reason")
     if not isinstance(gate_reason, str) or not gate_reason:
-        raise ValueError(f"the gate shipped no reason for {pot.get('ball_id')!r}: the queue "
+        raise ValueError(f"the gate shipped no reason for {pot.get(BALL_ID_KEY)!r}: the queue "
                          "repeats the gate's reason and will not answer one itself")
     codes = [gate_reason]
     if verdict_mm == "ambiguous":
@@ -325,7 +325,7 @@ def pot_event(pot: dict, H, artifact, served_reason: str | None = None,
         "verified": False,
         "source": "dense-track",
         "window_s": [round(float(pot["last_t"]) - 1.5, 2), round(float(pot["last_t"]) + 1.5, 2)],
-        "color": pot["ball_id"].split("-", 1)[1],
+        "color": pot[BALL_ID_KEY].split("-", 1)[1],
         POCKET_DIST_MM_KEY: (f"{pot['pocket']} ({float(gate_mm):.0f} ± {float(uncertainty_mm):.0f}mm)"
                            if gate_mm is not None and uncertainty_mm is not None
                            else f"{pot['pocket']} ({gate_mm}mm)" if gate_mm is not None
@@ -339,8 +339,8 @@ def pot_event(pot: dict, H, artifact, served_reason: str | None = None,
                  "reasons": codes + ([sentence] if sentence else []),
                  "codes": codes,
                  "numbers": numbers,
-                 "dup_count": 1, "colors_merged": [pot["ball_id"].split("-", 1)[1]]},
-        "provenance": provenance(artifact, {"ball_id": pot["ball_id"],
+                 "dup_count": 1, "colors_merged": [pot[BALL_ID_KEY].split("-", 1)[1]]},
+        "provenance": provenance(artifact, {BALL_ID_KEY: pot[BALL_ID_KEY],
                                            "gate_reason": gate_reason,
                                            "gate_verdict": pot.get("verdict"),
                                            "served_because": served_reason,
@@ -396,7 +396,7 @@ def _previous_ids(previous_path) -> dict:
     held = {}
     for entry in previous if isinstance(previous, list) else []:
         provenance_block = entry.get("provenance") if isinstance(entry, dict) else None
-        ball_id = provenance_block.get("ball_id") if isinstance(provenance_block, dict) else None
+        ball_id = provenance_block.get(BALL_ID_KEY) if isinstance(provenance_block, dict) else None
         if ball_id and isinstance(entry.get("id"), int):
             held[ball_id] = entry["id"]
     return held
@@ -419,7 +419,7 @@ def _previous_retired(report_path) -> dict:
         return {}
     retired = {ball_id: dict(row) for ball_id, row in (previous.get("retired_ids") or {}).items()}
     channel = previous.get("channels") or {}
-    departed = {row.get("ball_id"): row for row in channel.get("departed_entries") or []}
+    departed = {row.get(BALL_ID_KEY): row for row in channel.get("departed_entries") or []}
     for ball_id, old_id in ((previous.get("id_changes") or {}).get("departed") or {}).items():
         row = departed.get(ball_id) or {}
         retired.setdefault(ball_id, {"id": old_id, "code": row.get("code"),
@@ -456,7 +456,7 @@ def assign_ids(entries: list, previous_path, reserved_ids=()) -> dict:
     used = set(held.values()) | {int(i) for i in reserved_ids}
     is_new = []
     for entry in entries:                      # already sorted by t
-        ball_id = entry["provenance"]["ball_id"]
+        ball_id = entry["provenance"][BALL_ID_KEY]
         if ball_id in held:
             entry["id"] = held[ball_id]
         else:
@@ -468,7 +468,7 @@ def assign_ids(entries: list, previous_path, reserved_ids=()) -> dict:
         entry["id"] = nxt
         used.add(nxt)
         nxt += 1
-    kept = {entry["provenance"]["ball_id"]: entry["id"] for entry in entries}
+    kept = {entry["provenance"][BALL_ID_KEY]: entry["id"] for entry in entries}
     departed = {b: i for b, i in held.items() if b not in kept}
     return {"served_before": held,
             "reused": {b: i for b, i in held.items() if b in kept},
@@ -476,7 +476,7 @@ def assign_ids(entries: list, previous_path, reserved_ids=()) -> dict:
             # Everything this run will not hand out: the ids earlier runs retired
             # plus the ones this run retires as it writes.
             "reserved": sorted({int(i) for i in reserved_ids} | set(departed.values())),
-            "added": {entry["provenance"]["ball_id"]: entry["id"] for entry in is_new}}
+            "added": {entry["provenance"][BALL_ID_KEY]: entry["id"] for entry in is_new}}
 
 
 def _bar_px(numbers: dict) -> float | None:
@@ -500,14 +500,14 @@ def gate_ledger(artifact, id_plan: dict) -> dict:
 
     by_ball = {}
     for row in rejections:
-        by_ball.setdefault(row.get("ball_id"), row)
+        by_ball.setdefault(row.get(BALL_ID_KEY), row)
 
     departed = []
     for ball_id, old_id in sorted(id_plan["departed"].items(), key=lambda kv: kv[1]):
         row = by_ball.get(ball_id) or {}
         numbers = row.get("numbers") or {}
         departed.append({
-            "was_id": old_id, "ball_id": ball_id,
+            "was_id": old_id, BALL_ID_KEY: ball_id,
             "now": "rejected" if row else "not an event in this gate run",
             "code": row.get("code"), "reason": row.get("reason"),
             "numbers": {k: numbers.get(k) for k in
@@ -524,7 +524,7 @@ def gate_ledger(artifact, id_plan: dict) -> dict:
         error = numbers.get("net_uncertainty_px")
         delta = None if net is None or bar is None else round(float(net) - float(bar), 3)
         unresolved_rows.append({
-            "ball_id": row.get("ball_id"), "code": row.get("code"), "t": row.get("t"),
+            BALL_ID_KEY: row.get(BALL_ID_KEY), "code": row.get("code"), "t": row.get("t"),
             "net_displacement_px": net,
             "net_displacement_diameters": numbers.get("net_displacement_diameters"),
             "bar_px": bar,
@@ -544,7 +544,7 @@ def gate_ledger(artifact, id_plan: dict) -> dict:
     for row in pots:
         speed = row.get("last_speed_px_s")
         unknown_rows.append({
-            "ball_id": row.get("ball_id"), "last_t": row.get("last_t"),
+            BALL_ID_KEY: row.get(BALL_ID_KEY), "last_t": row.get("last_t"),
             "pocket": row.get("pocket"),
             "distance_mm": row.get("distance_mm"),
             "distance_mm_uncertainty": row.get("distance_mm_uncertainty"),
@@ -556,7 +556,7 @@ def gate_ledger(artifact, id_plan: dict) -> dict:
             "gap_s": row.get("gap_s"),
             "moving_at_last_sighting": None if speed is None else bool(speed >= MOVING_PX_S),
             "occlusion_status": row.get("occlusion_status"),
-            "served": row.get("ball_id") in served_balls})
+            "served": row.get(BALL_ID_KEY) in served_balls})
     moving = [row for row in unknown_rows if row["moving_at_last_sighting"]]
     parked = [row for row in unknown_rows if row["moving_at_last_sighting"] is False]
     text = [row for row in unknown_rows if row.get("distance_mm") is None]
@@ -606,7 +606,7 @@ def gate_ledger(artifact, id_plan: dict) -> dict:
             "why_the_parked_ones_are_not_served": "a near-stationary disappearance is a "
                                                   "detector dropout, not a ball running at a "
                                                   "pocket; they stay counted in this ledger",
-            "no_distance_reported": [row["ball_id"] for row in text],
+            "no_distance_reported": [row[BALL_ID_KEY] for row in text],
             "rows": unknown_rows},
         "departed_entries": departed,
     }
@@ -640,14 +640,14 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
         speed = row.get("last_speed_px_s")
         return speed is not None and float(speed) >= MOVING_PX_S
 
-    served_unknown = [row for row in unknown if row["ball_id"] in held or _moved(row)]
+    served_unknown = [row for row in unknown if row[BALL_ID_KEY] in held or _moved(row)]
     dropped = [row for row in unknown if row not in served_unknown]
 
     entries = [shot_event(shot, H, artifact) for shot in artifact["gate"]["shots"]]
     entries += [pot_event(row, H, artifact) for row in confirmed]
     for row in served_unknown:
         entries.append(pot_event(row, H, artifact,
-                                 served_reason=(CARRIED_REASON if row["ball_id"] in held
+                                 served_reason=(CARRIED_REASON if row[BALL_ID_KEY] in held
                                                 else CLASS_REASON),
                                  siblings_not_served=len(dropped)))
     entries.sort(key=lambda event: event["t"])
@@ -658,7 +658,7 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
                                        if isinstance(row.get("id"), int)})
     ledger = gate_ledger(artifact, id_plan)
     for ball_id, old_id in id_plan["departed"].items():
-        row = next((x for x in ledger["departed_entries"] if x["ball_id"] == ball_id), {})
+        row = next((x for x in ledger["departed_entries"] if x[BALL_ID_KEY] == ball_id), {})
         retired[ball_id] = {"id": old_id, "code": row.get("code"),
                             "numbers": row.get("numbers"), "why": row.get("reason"),
                             "retired_in_queue": queue_before}
@@ -709,8 +709,8 @@ def build(artifact_path: str, queue_path: str, report_path: str, previous_path: 
                        "pots_in_artifact": len(pots),
                        "pots_confirmed": len(confirmed),
                        "pots_unknown_in_channel": len(unknown),
-                       "unknowns_served": [row["ball_id"] for row in served_unknown],
-                       "unknowns_not_carded": [{"ball_id": row["ball_id"], "last_t": row.get("last_t"),
+                       "unknowns_served": [row[BALL_ID_KEY] for row in served_unknown],
+                       "unknowns_not_carded": [{BALL_ID_KEY: row[BALL_ID_KEY], "last_t": row.get("last_t"),
                                                 "distance_mm": row.get("distance_mm"),
                                                 "distance_mm_uncertainty": row.get("distance_mm_uncertainty"),
                                                 "verdict_mm": row.get("verdict_mm"),

@@ -485,7 +485,7 @@ to every batch tool.  The two that are *queried* rather than read whole get real
   `src/rebuild_events_calibrated.py:152`.  Readers: `unified_server.py:1306-1316`
   (`GET /api/<ds>/events`), `:1397` (annotate validation), `:696` (`_unified_events`, every
   unified frame), `:1223` (`event_frame`), `src/motion_scan.py:2341-2353`,
-  `src/candidate_scan.py:601-605`, `src/eval_events.py`, `src/timing_verify.py:780`.
+  `src/candidate_scan.py:605-609`, `src/eval_events.py`, `src/timing_verify.py:780`.
 
 ```sql
 CREATE TABLE queue_events (

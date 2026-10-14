@@ -33,6 +33,7 @@ if str(ROOT) not in sys.path:
 from src import ball_association_audit as audit  # noqa: E402
 from src import ball_census as bc  # noqa: E402
 from annotator.pipeline_stages import BALL_THRESHOLD  # noqa: E402
+from src.shot_pot_gate import BALL_ID_KEY  # noqa: E402
 
 #: The ball stage's peak-search cut has one home, ``BALL_THRESHOLD`` above.  This
 #: harness decides ball labels for the A/B, and it also copies its own default into
@@ -179,7 +180,7 @@ def _shape_from_artifact(path) -> dict:
 
 def _record(row) -> dict:
     """The gate's rejection in the shape the harness writes, so the audit reads it."""
-    return {"kind": "rejection", "code": row.code, "ball_id": row.ball_id,
+    return {"kind": "rejection", "code": row.code, BALL_ID_KEY: row.ball_id,
             "reason": row.reason, "t": row.t, "frame_index": row.frame_index,
             "numbers": dict(getattr(row, "numbers", {}) or {}),
             "samples_used": [{"frame_index": s.frame_index, "t": s.t, "x": s.x, "y": s.y,
