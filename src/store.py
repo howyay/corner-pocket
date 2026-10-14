@@ -64,6 +64,9 @@ from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMEN
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules  # noqa: E402
+# The refusal of an unknown record set has one home in src/store_rules.py.  The class
+# below reads the home by name; the five edit rules stay under the module alias.
+from src.store_rules import unknown_record_set  # noqa: E402
 # The anchor file name of a dataset, and the two document names of the
 # calibration, have one owner: src/calib_segments.py.  This module reads that
 # owner, so the path of the anchors document and the path of the calibration
@@ -99,6 +102,12 @@ TRACKLETS_NAME = "pid2_tracklets.json"
 # from here, so no reader spells one of them again.  The guard of this rule is
 # tests/test_shared_artifact_names.py.
 SHARED_ARTIFACT_NAMES = (*SHARED_ARTIFACTS.values(), TRACKLETS_NAME)
+# The two person reports of the pid passes, as paths from the repository root.  The
+# two readers join this name with their own root: src/pid_identity.py builds
+# `ROOT / rel`, and src/yolo_track.py builds `os.path.join(REPO, rel)`.  No reader
+# spells a directory or a file name of the pair again.  The guard of this rule is
+# tests/test_store_report_paths_owner.py.
+PERSON_REPORT_PATHS = ("out/pid1_persons/report.json", "out/pid1_persons2/report2.json")
 
 
 @runtime_checkable
@@ -247,7 +256,7 @@ class JsonStore:
             return self._faces_path()
         if kind == "anchors":
             return self._anchors_path(key)
-        raise ValueError(f"unknown record set: {kind}")
+        raise ValueError(unknown_record_set(kind))
 
     # -- identity -----------------------------------------------------------
     def identity_path(self) -> Path:

@@ -51,6 +51,11 @@ MOTION_THRESH = 4.5     # table-region frame diff for a shot candidate
 MIN_BALL_AREA_720 = 14.0
 MAX_BALL_AREA_720 = CLASSICAL_BALL_MAX_AREA_960X540_PX
 
+# The pot event carries the table coordinate under this key.  The rebuild tools and
+# src/event_gates.py read this name; annotator/index.html reads the same key of the
+# served row.  The value stays, because the document on disk carries it.
+BALL_TABLE_MM_KEY = "ball_table_mm"
+
 
 def motion_energy(gray_now: np.ndarray, gray_prev: np.ndarray, mask) -> float:
     if gray_prev is None:
@@ -351,7 +356,7 @@ def main():
                     "t": round((t1 + t2) / 2, 1),
                     "type": "pot",
                     "window_s": [round(t1, 1), round(t2, 1)],
-                    "ball_table_mm": b["table_mm"],
+                    BALL_TABLE_MM_KEY: b["table_mm"],
                     "nearest_pocket": pocket,
                     "pocket_dist_mm": round(dist),
                 })

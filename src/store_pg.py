@@ -27,7 +27,6 @@ from __future__ import annotations
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-
 import json
 
 from src import db
@@ -46,6 +45,7 @@ from src.store_import import CORRECTION_INSERT, CORRECTION_UPSERT, OPS_EVENT_INS
 # and JsonStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
 import src.store_rules as store_rules
+from src.store_rules import unknown_record_set  # the refusal sentence has one home
 # The anchor file name of a dataset has one owner, src/calib_segments.py.  This
 # store reads that owner, so the document path here cannot drift from the path
 # JsonStore builds for the same record set.
@@ -205,7 +205,7 @@ class PostgresStore:
             return "postgres:face_embeddings"
         if kind == "anchors":
             return f"postgres:{DOCUMENTS}/{_doc_path('anchors', key)}"
-        raise ValueError(f"unknown record set: {kind}")
+        raise ValueError(unknown_record_set(kind))
 
     # -- identity (design 3) ----------------------------------------------------
     def identity_load(self) -> dict:

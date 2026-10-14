@@ -787,6 +787,10 @@ def _median(values: Iterable[float]) -> float | None:
     return (float(values[middle - 1]) + float(values[middle])) / 2.0
 
 
+#: The key of the source list of a colour claim in the census summary; one home.
+CLAIM_COLOR_PRESENT_SOURCES_KEY = "claim_color_present_sources"
+
+
 def window_summary(report: dict, pre_times: Iterable[float], post_times: Iterable[float],
                    claim_color: str | None = None, mm_fn=None) -> dict:
     """Census before/after one event, plus the identities that vanished.
@@ -915,7 +919,7 @@ def window_summary(report: dict, pre_times: Iterable[float], post_times: Iterabl
         summary["claim_color_present"] = presence["present"]
         summary["claim_color_present_measured"] = presence["measured"]
         summary["claim_color_present_hits"] = presence["hits"]
-        summary["claim_color_present_sources"] = presence["sources"]
+        summary[CLAIM_COLOR_PRESENT_SOURCES_KEY] = presence["sources"]
         summary["claim_color_unique"] = presence["color"] in UNIQUE_COLORS
     return summary
 

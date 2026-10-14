@@ -22,7 +22,7 @@ path by hand.  The list below holds those lines as round 94 found them, before t
 round moved them.
 
     ``src/info_complete_scan.py:431``, ``src/motion_scan.py:2343`` and ``:2336``,
-    ``src/segment_calib_report.py:43``, ``src/store.py:399`` and
+    ``src/segment_calib_report.py:43``, ``src/store.py:408`` and
     ``src/timing_verify.py:790`` held the file name in their own text.
 
 Five of the six sites read the name through the owner now, so a rename moves the

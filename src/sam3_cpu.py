@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 import types  # noqa: F401
 
-# src/weight_pins.py owns the SAM3 weight path, so this file reads the owner.
-from src.weight_pins import SAM3
+# src/weight_pins.py owns the SAM3 weight path and the asset name, so this file reads it.
+from src.weight_pins import SAM3, SAM3_BPE
 
 
 def _apply_patches() -> None:
@@ -64,7 +64,7 @@ def load_sam3_image_model(checkpoint_path: str, device: str = "cpu", **kwargs):
 
     if "bpe_path" not in kwargs or kwargs["bpe_path"] is None:
         kwargs["bpe_path"] = (
-            Path(__file__).resolve().parent / "sam3" / "sam3" / "assets" / "bpe_simple_vocab_16e6.txt.gz"
+            Path(__file__).resolve().parent / "sam3" / "sam3" / "assets" / SAM3_BPE
         )
 
     model = build_sam3_image_model(

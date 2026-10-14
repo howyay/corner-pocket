@@ -92,6 +92,10 @@ from src.pocket_names import pocket_from_text
 # value answers ''.  tests/test_color_names.py holds the one home.
 from src.color_names import color_key
 from src.table_refine import REASON_NO_BOUNDARY_EVIDENCE  # the gate reads the producer's one string
+# The pot coordinate key has one home, src/scan_events.py, the writer of the served
+# document.  The gate reads that name.  The home adds no library to this module: it
+# answers numpy and cv2 already, through src.table_refine.
+from src.scan_events import BALL_TABLE_MM_KEY
 
 
 @dataclass
@@ -171,7 +175,7 @@ def normalize(raw: Any) -> dict:
         "color": event.get("color"),
         "from_mm": event.get("from_mm") or event.get("ball_from"),
         "to_mm": event.get("to_mm") or event.get("ball_to"),
-        "last_mm": event.get("last_mm") or event.get("ball_table_mm"),
+        "last_mm": event.get("last_mm") or event.get(BALL_TABLE_MM_KEY),
         "gap_s": num_or_none(event.get("gap_s")),
         "from_frame": event.get("from_frame"),
         "to_frame": event.get("to_frame"),
@@ -321,9 +325,9 @@ class ShotEvidence:
 
 
 # --------------------------------------------------------------------- gates
-
 def pot_gate(claim: dict, evidence: PotEvidence, cfg: GateConfig = GateConfig()) -> GateResult:
     """A pot needs a census drop that stays down, and the vanished ball at a pocket."""
+    from src.ball_census import CLAIM_COLOR_PRESENT_SOURCES_KEY  # local: the top closes a cycle
     numbers = {"census_pre": evidence.census_pre, "census_post": evidence.census_post,
                "census_post_max": evidence.census_post_max, "motion_max": evidence.motion_max,
                "calibration_frac": evidence.calibration_frac,
@@ -343,7 +347,7 @@ def pot_gate(claim: dict, evidence: PotEvidence, cfg: GateConfig = GateConfig())
                "claim_color_present": evidence.claim_color_present,
                "claim_color_present_measured": evidence.claim_color_present_measured,
                "claim_color_present_hits": evidence.claim_color_present_hits,
-               "claim_color_present_sources": evidence.claim_color_present_sources,
+               CLAIM_COLOR_PRESENT_SOURCES_KEY: evidence.claim_color_present_sources,
                "claim_color_unique": evidence.claim_color_unique}
     if not evidence.available:
         return GateResult("unconfirmed", "probe", [evidence.note or "no probe evidence"], numbers=numbers)

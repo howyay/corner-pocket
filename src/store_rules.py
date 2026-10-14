@@ -26,20 +26,25 @@ appended - JsonStore.label_put exactly."
 
 One rule now has one home: this module. It holds pure functions only. It holds no
 store, no file, and no database, so both classes import it without a second import
-path. The five rules are:
+path. The six rules are:
 
   * `merge_record` merges the incoming fields of one record into the stored fields.
   * `drop_key` removes one key, and it is quiet when the key is absent.
   * `clear_keys` removes every key of one sequence, and it is quiet for each one.
   * `keys_for_basename` finds the stored keys whose file name matches one crop file.
   * `spelled_time` answers the stored spelling of one anchor time key.
+  * `unknown_record_set` answers the refusal of one record set that a store does not keep.
+
+The sixth rule arrived in round 107: `JsonStore.place` and `PostgresStore.place` held
+their own copy of one refusal sentence, so one wording change had to land in both files.
 
 The callers keep every side effect: the lock, the file write, the stored document,
 and the row projection. This module changes no byte of a stored document.
 """
 from __future__ import annotations
 
-__all__ = ["merge_record", "drop_key", "clear_keys", "keys_for_basename", "spelled_time"]
+__all__ = ["merge_record", "drop_key", "clear_keys", "keys_for_basename", "spelled_time",
+           "unknown_record_set"]
 
 from pathlib import Path
 
@@ -51,7 +56,7 @@ def merge_record(stored: dict, incoming: dict) -> dict:
     The function returns a new dict. It does not change either argument.
 
     This function closes the defect of round 56: the merge of one record sat in
-    `src/store.py:284` and in `src/store_pg.py:291`, and one edit had to land in
+    `src/store.py:293` and in `src/store_pg.py:291`, and one edit had to land in
     both sites.
     """
     return dict(stored, **incoming)
@@ -63,7 +68,7 @@ def drop_key(store: dict, key) -> None:
     An absent key is not an error, so a caller can clear a record twice.
 
     This function closes the defect of round 56: the delete of one key sat in
-    `src/store.py:284` and in `src/store_pg.py:286`.
+    `src/store.py:293` and in `src/store_pg.py:286`.
     """
     store.pop(key, None)
 
@@ -76,7 +81,7 @@ def clear_keys(store: dict, keys) -> None:
     can match more than one stored key.
 
     This function closes the defect of round 56: the clear of one crop sat in the
-    `for` loop of `src/store.py:318` and of `src/store_pg.py:354`.
+    `for` loop of `src/store.py:336` and of `src/store_pg.py:354`.
     """
     for key in keys:
         store.pop(key, None)
@@ -89,7 +94,7 @@ def keys_for_basename(store: dict, crop_file: str) -> list:
     of the mapping. A caller uses that key and removes the other matches.
 
     This function closes the defect of round 56: the lookup of a key by basename
-    sat in `src/store.py:316` and in `src/store_pg.py:352`.
+    sat in `src/store.py:325` and in `src/store_pg.py:352`.
     """
     return [key for key in store if Path(key).name == crop_file]
 
@@ -105,3 +110,15 @@ def spelled_time(store: dict, t_key: str) -> str:
     time sat in `src/store.py` and in `src/store_pg.py:321`.
     """
     return next((key for key in store if float(key) == float(t_key)), str(t_key))
+
+
+def unknown_record_set(kind: str) -> str:
+    """Answer the refusal of one record set that a store does not keep.
+
+    `kind` is the record set that the caller named. The caller raises `ValueError`
+    with this answer, so both stores refuse an unknown kind in one wording.
+
+    This function closes the defect of round 107: the sentence sat in
+    `src/store.py:250` and in `src/store_pg.py:208`.
+    """
+    return f"unknown record set: {kind}"

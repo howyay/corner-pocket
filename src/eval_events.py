@@ -46,8 +46,8 @@ from src.event_gates import (CANON_H, CANON_W, GateConfig, NOTE_NO_BRACKETING_GE
                              PotEvidence, ShotEvidence, dedupe, judge,
                              nearest_pocket, normalize)
 from src.ball_census import (CENSUS_VERSION, build_census, classify_ball_color,  # noqa: E402
-                             displacement_measure, observations_from_classical,
-                             observations_from_sam3, window_summary)
+                             CLAIM_COLOR_PRESENT_SOURCES_KEY, displacement_measure,
+                             observations_from_classical, observations_from_sam3, window_summary)
 from src.ball_detect import detect_ball_candidates  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
@@ -641,7 +641,7 @@ def probe_pot(claim, probe):
                            claim_color_present=summary.get("claim_color_present"),
                            claim_color_present_measured=summary.get("claim_color_present_measured"),
                            claim_color_present_hits=summary.get("claim_color_present_hits"),
-                           claim_color_present_sources=summary.get("claim_color_present_sources"),
+                           claim_color_present_sources=summary.get(CLAIM_COLOR_PRESENT_SOURCES_KEY),
                            claim_color_unique=summary.get("claim_color_unique"))
     if summary["census_pre"] is not None and summary["census_post"] is not None:
         evidence.census_pre = summary["census_pre"]
@@ -1033,7 +1033,7 @@ def _census_line(row):
                       f"approach {numbers.get('approach_mm')}mm)")
         present = ""
         if numbers.get("claim_color_present"):
-            present = f" | claim colour still on the cloth: {numbers.get('claim_color_present_sources')}"
+            present = f" | claim colour still on the cloth: {numbers.get(CLAIM_COLOR_PRESENT_SOURCES_KEY)}"
         return (f"census {source} {numbers.get('census_pre')}->{numbers.get('census_post')} "
                 f"(max {numbers.get('census_post_max')}, sam3 frames "
                 f"{numbers.get('sam3_frames_pre')}/{numbers.get('sam3_frames_post')}) | {vanish} | "

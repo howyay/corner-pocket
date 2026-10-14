@@ -481,8 +481,8 @@ to every batch tool.  The two that are *queried* rather than read whole get real
 ### 5.1 Review queue — `out/<scan>/events.json`
 
 * Writers (batch only): `src/dense_queue.py:587-637` (`build`, the served queue),
-  `src/scan_events.py:338-342`, `src/info_complete_scan.py:413`,
-  `src/rebuild_events_calibrated.py:146`.  Readers: `unified_server.py:1306-1316`
+  `src/scan_events.py:343-347`, `src/info_complete_scan.py:413`,
+  `src/rebuild_events_calibrated.py:148`.  Readers: `unified_server.py:1306-1316`
   (`GET /api/<ds>/events`), `:1397` (annotate validation), `:696` (`_unified_events`, every
   unified frame), `:1223` (`event_frame`), `src/motion_scan.py:2338-2350`,
   `src/candidate_scan.py:598-602`, `src/eval_events.py`, `src/timing_verify.py:777`.
@@ -521,7 +521,7 @@ key='<frame>')`.  Nothing new writes this kind — the endpoint stopped writing 
 ### 5.3 Calibration and anchors
 
 * `out/calib_vod30_segments.json` — writer `src/calib_segment_fit.py:53`; readers
-  `unified_server.py:1579` (`_segments`, via `src/calib_segments.py:362` which caches
+  `unified_server.py:1579` (`_segments`, via `src/calib_segments.py:369` which caches
   on file mtime), `src/shot_pot_gate.py:15,105`, `src/tiny_ball_net.py:57`,
   `src/calib_mapping_audit.py`.  → `artifacts(kind='calibration_segments')`.
 * `out/calib_vod30.json` — reader `unified_server.py:2131` (suggested anchor points).
@@ -547,7 +547,7 @@ The mtime-keyed caches (`calib_segments._CACHE`, `_unified_cache`) key on
 
 ### 5.4 Tracklets — `out/pid2_tracklets.json`
 
-Writer `src/yolo_track.py:131` (batch); readers `unified_server.py:1245-1246` (`tracks()`,
+Writer `src/yolo_track.py:130` (batch); readers `unified_server.py:1245-1246` (`tracks()`,
 used by `/tracklets`, `/tracks`, seed validation `:1436`), `src/pid_seed_rebuild.py:27`,
 `src/pid_seed_ui.py:28`.  Shape: `{window: {n_tracklets, runtime_s, tracklets:[{id, dur, n,
 samples:[[t, [x1,y1,x2,y2]], …]}]}}` — 4 windows, 21 tracklets, 252 samples.

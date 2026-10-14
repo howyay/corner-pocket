@@ -28,8 +28,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 # src/pid_identity.py writes the identity document and owns its name, so this
 # reader takes the path from the owner.
-from pid_identity import (IDENTITY_REFERENCE, PERSON_CONF, classify_ab, in_table_zone,
-                          light_dark, torso_color)
+from pid_identity import (CENTERS_BGR_KEY, IDENTITY_REFERENCE, PERSON_CONF, classify_ab,
+                          in_table_zone, light_dark, torso_color)
 from src.datasets import media_path  # noqa: E402
 VIDEO = str(media_path(REPO, "vod30"))
 MODEL = YOLO(weight_pins.YOLO)
@@ -37,7 +37,7 @@ MODEL = YOLO(weight_pins.YOLO)
 # reader takes the path from the owner and keeps its own root.
 EVENTS = json.load(open(events_document.document_path(events_document.V2, root=REPO)))
 ID = json.load(open(os.path.join(REPO, IDENTITY_REFERENCE)))
-centers = np.array(ID["centers_bgr"])  # BGR
+centers = np.array(ID[CENTERS_BGR_KEY])  # BGR
 # The A/B rule lives in src/pid_identity.py: A is the light cluster, B is the dark one.
 A_CLUSTER, B_CLUSTER = light_dark(centers)
 

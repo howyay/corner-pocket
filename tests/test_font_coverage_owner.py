@@ -20,7 +20,7 @@ directions, and it holds the coverage of the CJK subset:
 * every CJK character of those files answers the builder's own subset, so a new
   Chinese sentence cannot arrive without its glyph;
 * a synthetic font proves the subset path of the builder: the code points of the
-  copy survive `copy_codepoints` at annotator/fonts/build_fonts.py:132 and `build`;
+  copy survive `copy_codepoints` at annotator/fonts/build_fonts.py:140 and `build`;
 * the three names of the build table COMMON_FACES stand in the two stylesheets that
   declare a -common face, and every -common name of those sheets stands in the table,
   so a name that stands in one home only fails this module;
@@ -219,7 +219,7 @@ class FontCoverageOwner(unittest.TestCase):
     def test_a_synthetic_font_keeps_every_code_point_of_the_copy(self):
         """The real subset path, on a font this case builds: no store, no download.
 
-        The case runs the steps of `build` at annotator/fonts/build_fonts.py:155 with
+        The case runs the steps of `build` at annotator/fonts/build_fonts.py:163 with
         the option object of the build.  It writes a .ttf, because the woff2 writer
         needs the `brotli` module and the project virtual environment does not carry
         it.  The flavor is the only step of `build` that the case does not run.

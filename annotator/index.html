@@ -73,6 +73,10 @@ function verdict(e) { return (annotations[String(e.id)] || {}).verdict; }
 function note(e) { return (annotations[String(e.id)] || {}).note || ''; }
 function shooter(e) { return (annotations[String(e.id)] || {}).shooter || ''; }
 
+// The pot coordinate key has one home, src/scan_events.py, which writes the served
+// events document.  This page reads the same key; the owner guard holds them equal.
+const BALL_TABLE_MM_KEY = "ball_table_mm";
+
 function render() {
   const list = events.filter(e => {
     if (filter === 'shot' && e.type !== 'shot') return false;
@@ -93,7 +97,7 @@ function render() {
     if (e.type === 'shot') {
       desc = `displacement ${e.disp_mm} mm (≈${e.speed_m_s} m/s) · ${e.ball_from ? 'from (' + e.ball_from[0] + ',' + e.ball_from[1] + ') mm to (' + e.ball_to[0] + ',' + e.ball_to[1] + ') mm' : ''}`;
     } else {
-      desc = `ball potted near ${e.nearest_pocket} (${e.pocket_dist_mm} mm from pocket) · last at (${e.ball_table_mm[0]},${e.ball_table_mm[1]}) mm`;
+      desc = `ball potted near ${e.nearest_pocket} (${e.pocket_dist_mm} mm from pocket) · last at (${e[BALL_TABLE_MM_KEY][0]},${e[BALL_TABLE_MM_KEY][1]}) mm`;
     }
     const v = verdict(e);
     const img = e.evidence ? e.evidence : `evidence_t${String(Math.round(e.t)).padStart(5,'0')}.jpg`;

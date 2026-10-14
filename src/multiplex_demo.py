@@ -18,9 +18,9 @@ import torch
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "sam3"))
 sys.path.insert(0, str(ROOT))
-from weight_pins import SAM3_BALL_PROMPT  # src/weight_pins.py owns this prompt
+from weight_pins import SAM3_BALL_PROMPT, SAM3_BPE  # src/weight_pins.py owns these names
 
-BPE = ROOT / "sam3" / "sam3" / "assets" / "bpe_simple_vocab_16e6.txt.gz"
+BPE = ROOT / "sam3" / "sam3" / "assets" / SAM3_BPE
 
 
 def load_predictor(checkpoint_path: str, max_objects: int = 16, fp32: bool = False):

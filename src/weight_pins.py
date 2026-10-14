@@ -83,3 +83,12 @@ OSNET_STD = (0.229, 0.224, 0.225)
 
 #: The repository root, from this file's own location.
 ROOT = Path(__file__).resolve().parents[1]
+
+#: The name of the byte-pair table asset of SAM3, under ``src/sam3/sam3/assets``.
+#:
+#: The table is vendored.  A loader holds its own root and joins this name, so
+#: one edit moves every path together.  ``src/multiplex_demo.py:23`` and
+#: ``src/sam3_cpu.py:67`` read this home.
+#: ``tests/test_sam3_asset_name_owner.py`` holds the name and reports a copy
+#: planted in either loader.
+SAM3_BPE = "bpe_simple_vocab_16e6.txt.gz"

@@ -272,7 +272,7 @@ def gate_result_reasons(call):
 
     ``GateResult`` is a dataclass and ``reasons`` is its third field (src/event_gates.py
     :122), so the call passes the keyword or the third positional argument
-    (src/event_gates.py:405).
+    (src/event_gates.py:409).
     """
     for keyword in call.keywords:
         if keyword.arg == 'reasons':

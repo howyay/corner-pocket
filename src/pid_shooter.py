@@ -36,8 +36,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 # src/pid_identity.py writes the identity document and owns its name, so this
 # reader takes the path from the owner.
-from pid_identity import (IDENTITY_REFERENCE, PERSON_CONF, classify_ab, in_table_zone,
-                          light_dark, torso_color)
+from pid_identity import (CENTERS_BGR_KEY, IDENTITY_REFERENCE, PERSON_CONF, classify_ab,
+                          in_table_zone, light_dark, torso_color)
 from src.datasets import media_path  # noqa: E402
 VIDEO = str(media_path(REPO, "vod30"))
 MODEL = YOLO(weight_pins.YOLO)
@@ -49,7 +49,7 @@ H = np.array(CAL["H"])  # mm -> px
 QUAD = np.array(json.load(open(corners_v2_path(root=REPO)))["corners"], np.float32)
 
 ID = json.load(open(os.path.join(REPO, IDENTITY_REFERENCE)))
-centers_bgr = np.array(ID["centers_bgr"])
+centers_bgr = np.array(ID[CENTERS_BGR_KEY])
 # The A/B rule lives in src/pid_identity.py: A is the light cluster, B is the dark one.
 A_CLUSTER, B_CLUSTER = light_dark(centers_bgr)
 print(f"clusters: A(light)=c{A_CLUSTER} {centers_bgr[A_CLUSTER].round(0)} "

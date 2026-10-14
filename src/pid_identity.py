@@ -1,6 +1,6 @@
 """PID-2/PID-4 precursor v0: identity prototypes from SAM3 person anchors.
 
-Inputs: out/pid1_persons/report.json + out/pid1_persons2/report2.json
+Inputs: the two person reports named by src/store.py (PERSON_REPORT_PATHS)
 (persons at 12 shot instants). For each person: torso mean RGB (bbox band) and
 table-relative side. Filter to table zone, k-means k=2 into A/B clothing
 prototypes, and emit per-instant assignments + a review montage.
@@ -22,6 +22,9 @@ sys.path.insert(0, str(ROOT))                 # the repo root, for the src.* imp
 # The corners v2 file has one home, src/calib_segments.py, so this reader takes the
 # path from that home and keeps its own root.
 from src.calib_segments import corners_v2_path  # noqa: E402
+# src/store.py owns the two person report paths, so this file reads the owner and
+# keeps its own root.
+from src.store import PERSON_REPORT_PATHS  # noqa: E402
 from src.datasets import media_path  # noqa: E402
 VIDEO = str(media_path(ROOT, "vod30"))
 QUAD = np.array(json.load(open(corners_v2_path(root=ROOT)))["corners"], np.float32)
@@ -33,6 +36,12 @@ QUAD = np.array(json.load(open(corners_v2_path(root=ROOT)))["corners"], np.float
 # three readers at once, and tests/test_pid_identity_owner.py reports a module
 # that spells the name again.
 IDENTITY_REFERENCE = "out/pid_identity_v0.json"
+
+# The identity document carries this key.  This module writes it, and the two
+# shooters read it at import time: src/pid_shooter.py and src/pid_shooter2.py.
+# The name has one home here, so a rename moves the writer and the two readers
+# at once.
+CENTERS_BGR_KEY = "centers_bgr"
 
 # The person pass of the four pid call sites asks the detector for class 0 at
 # this confidence.  These files read this name: src/pid_associate.py,
@@ -82,8 +91,7 @@ def torso_color(bgr, bb):
 
 def persons():
     out = []
-    for p in [str(ROOT / "out" / "pid1_persons" / "report.json"),
-              str(ROOT / "out" / "pid1_persons2" / "report2.json")]:
+    for p in [str(ROOT / rel) for rel in PERSON_REPORT_PATHS]:
         if not Path(p).exists():
             continue
         for r in json.load(open(p)):
@@ -192,7 +200,7 @@ def main():
         cv2.imwrite(str(ROOT / "out" / "pid_identity_montage.png"), mont)
         print("wrote out/pid_identity_montage.png")
     json.dump({"feats": feats,
-               "centers_bgr": np.round(cen, 0).tolist(),
+               CENTERS_BGR_KEY: np.round(cen, 0).tolist(),
                "between": round(d_between, 1), "within": [round(w, 1) for w in within]},
               open(ROOT / IDENTITY_REFERENCE, "w"), indent=1)
     print(f"wrote {ROOT / IDENTITY_REFERENCE}")

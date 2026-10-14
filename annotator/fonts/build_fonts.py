@@ -104,6 +104,14 @@ COMMON_FACES = (
     ('noto-serif-sc-500-common.woff2', 'notoserifsc/NotoSerifSC[wght].ttf', 500),
 )
 
+#: The served face file names of LATIN_FACES and CJK_FACES, in one readable table.  A
+#: stylesheet names these files in url() and BOARD_FONTS of annotator/unified_server.py
+#: routes them under /fonts/.  A stylesheet cannot read a python name, so
+#: tests/test_font_face_names_owner.py holds the two sheets and the route list to this
+#: table.  The -common files are the other row: their home is COMMON_FACES above, and
+#: tests/test_font_coverage_owner.py holds them.
+FACE_FILES = tuple(row[0] for row in LATIN_FACES + CJK_FACES)
+
 
 def common_codepoints(src, ui):
     """Level 1 of 通用规范汉字表 (3,500 common hanzi) plus CJK punctuation and the

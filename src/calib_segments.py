@@ -349,6 +349,13 @@ class Segments:
                 if b.t_start > a.t_end]
 
 
+# The note of a frame whose search found no verified quad.  The console and the
+# served documents carry this sentence, so one edit moves both readers of it.
+# ``resolve`` writes it beside the ``Reference`` it answers, and
+# ``src.motion_scan.load_quad`` reads this name for the same state.
+NOTE_NO_QUAD = "no quad found"
+
+
 @dataclass
 class Reference:
     """One calibration reference: the quad and where it came from.
@@ -687,7 +694,7 @@ def resolve(dataset: str = "vod30", t=None, root=None, artifact=None, quad_file=
         if candidate is not None and candidate.found:
             candidate.rejected = list(rejected)
             return candidate
-    return Reference(dataset=dataset, kind="none", origin="none", note="no quad found",
+    return Reference(dataset=dataset, kind="none", origin="none", note=NOTE_NO_QUAD,
                      rejected=list(rejected))
 
 

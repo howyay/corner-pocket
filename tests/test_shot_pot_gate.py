@@ -221,7 +221,7 @@ class PocketGeometryTests(GateTestCase):
     def test_the_pot_radius_is_the_event_gates_measurement(self):
         """Strong 1: the gate's bar and this model's mouth are one number.
 
-        ``src/event_gates.py:387`` calls a vanished ball past
+        ``src/event_gates.py:391`` calls a vanished ball past
         ``GateConfig.pot_pocket_r_mm`` a pot.  The pocket model places the same
         mouth.  This case names both sides and the measured value, so a
         restated literal fails here and not in silence.

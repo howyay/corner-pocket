@@ -296,7 +296,7 @@ def load_quad(dataset: str = "vod30", root=None, quad_file=None, frame_size=None
                                        frame_size=frame_size)
     if not reference.found:
         return {"quad_px": None, "source": "none", "verified": False,
-                "note": "no quad found", "evidence": None,
+                "note": calib_segments.NOTE_NO_QUAD, "evidence": None,
                 "rejected": list(reference.rejected)}
     return {"quad_px": np.round(np.asarray(reference.quad, np.float64), 3).tolist(),
             "source": reference.origin, "verified": reference.verified,

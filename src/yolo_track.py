@@ -20,17 +20,16 @@ from src.box_geometry import iou  # noqa: E402
 from src import weight_pins  # noqa: E402
 # src/pid_identity.py owns the person-pass confidence, so this file reads it.
 from src.pid_identity import PERSON_CONF  # noqa: E402
-# src/store.py owns the four out/-root names, so this file reads the owner.  The print
-# below keeps the name as console text alone.
-from src.store import TRACKLETS_NAME  # noqa: E402
+# src/store.py owns the four out/-root names and the two person report paths, so this
+# file reads the owner.  The print below keeps the name as console text alone.
+from src.store import PERSON_REPORT_PATHS, TRACKLETS_NAME  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VIDEO = str(media_path(REPO, "vod30"))
 MODEL = YOLO(weight_pins.YOLO)
 
 SAM3 = {}
-for p in [os.path.join(REPO, "out", "pid1_persons", "report.json"),
-          os.path.join(REPO, "out", "pid1_persons2", "report2.json")]:
+for p in [os.path.join(REPO, rel) for rel in PERSON_REPORT_PATHS]:
     if not os.path.exists(p):
         continue
     for r in json.load(open(p)):

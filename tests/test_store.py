@@ -33,7 +33,7 @@ def unit(seed, dim=512):
     return v / np.linalg.norm(v)
 
 
-# src/store.py:157 owns the rule; a module that writes user-data files directly must
+# src/store.py:166 owns the rule; a module that writes user-data files directly must
 # announce itself with the path it writes through. The case below starts every module
 # that calls the guard, and refuses to pass while the tree and this set disagree.
 REFUSAL_CALL = re.compile(r"refuse_file_writes_under_postgres\(\s*[\"']([^\"']+)[\"']\s*\)")
