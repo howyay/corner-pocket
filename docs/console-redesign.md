@@ -14365,3 +14365,65 @@ The console on `127.0.0.1:8130` answers `/` with 2606 bytes, sha1 `a4ced77cee81`
    pin too, so a round that extends an import line must measure the guards that pin it.
 4. The writer of the round names every moved pin it sees but does not edit them, because its
    file list is fixed.  The Lead repairs them in the same round.
+
+## Round 121 — the pencil joins the name, and the bar folds to one row where the width allows
+
+Two requests arrived about the competition page.  The pencil of the competition name belongs next
+to the name.  The bar buttons belong on one row where the width allows.
+
+### The pencil stands next to the name
+
+`annotator/ops.css` gave `#ops-shell .card--event .event-head` two grid columns, `1fr auto`.  The
+title cell filled the first track, so the pencil stood at the card's right edge.  The measured gap
+between the name and the pencil was 85 px at 1000, 186 px at 1280 and 309 px at 1920.
+
+The head is a grid of `auto 1fr` now.  The title holds column 1 with `justify-self:start`.  The
+pencil holds column 2 with `justify-self:start`, so it touches the name.  The parameter line spans
+both columns and keeps its own row.
+
+The measured gap between the name and the pencil is 4 px at 1000, 1280, 1440 and 1920.  The head
+keeps its 60 px, also where the parameter line sits below the name.
+
+### The bar folds to one row where the width allows
+
+The header held two rows at every width: the destinations with the tools, then the clock.  The
+second row was mostly empty on a wide screen, because the clock's own contents take near 400 px.
+
+`#ops-shell .bar` is `flex-direction:row;flex-wrap:wrap` now, and `#ops-shell .clockbar` carries
+`flex:1 0 auto`.  The clock shares the first row while the row is wide enough.  It wraps to its own
+row when the row is narrow.
+
+The measured header height is 52 px at 1440 and at 1920 (one row), and 98 px at 1280 and 106 px at
+1000 (two rows).  The clock sits at y=7 on a wide screen and at y=56 or y=58 when it wraps.  The
+fold sits between 1280 and 1440.
+
+The phone layout does not change.  The ≤750 px rule keeps `position:fixed` on the clockbar, so the
+clock stays a bottom bar with its own row.
+
+### The shot-timer progress line
+
+The progress line is a child of the clock row and was `position:absolute` against it.  It measured
+311 px, the clock's own width.  `#ops-shell .bar` is `position:relative` now, so the line spans the
+whole header: 1185 px at 1280 and 1496 px at 1920.
+
+### The guard
+
+`tests/test_ops.js` names every rule of this round by its text: the head's `auto 1fr`, the pencil's
+column and `justify-self`, the parameter line's span, the bar's wrap and its direction, and the
+clock's `flex:1 0 auto`.  The bar test refuses `flex-direction:column` on the bar and
+`position:relative` on the clockbar, so the two-row rule cannot come back.
+
+Node: 233 tests pass and 0 fail, the bar test and the new round-121 test included; the board suite
+23 pass and 0 fail; the timeline suite holds its 75 source-text assertions.  The four python
+modules that read `annotator/ops.css` pass: `test_stylesheet_owner` 7 tests,
+`test_palette_contrast` 8, `test_public_board` 34, `test_font_coverage_owner` 11.
+
+### Lessons
+
+1. A flex row does not fold a full-width line.  `.heading` already carried `flex-wrap:wrap`, but
+   the parameter line shared the title's line, and one line never folds.  A grid with one explicit
+   column per item folds the line.
+2. The two-row bar was a decision of round 8.  That rule held the clock's own row at every width.
+   A width rule that replaces it must keep the phone layout, which fixes the clock to the bottom.
+3. A child that anchors to the clock row also moves with that row.  The progress line needed the
+   bar itself to become the anchor.

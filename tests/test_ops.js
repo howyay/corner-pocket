@@ -3136,7 +3136,7 @@ test('stage 8: Floor and Matches are not screens any more, and every old way in 
 });
 
 // ---- IA C′ stage 9: one bar, five destinations, a data-driven Tonight, and the shot timer's one name.
-test('the bar is two rows: the shot timer, then the five destinations and the tools; no hall and no strip (stage 9 / owner §13.1 + round 7 item 2)', () => {
+test('the bar holds the shot timer, the five destinations and the tools, on one line where the width allows; no hall and no strip (stage 9 / owner §13.1 + round 7 item 2 + round 121)', () => {
   const html = fs.readFileSync(path.join(__dirname, '../annotator/ops.html'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
   const start = html.indexOf('<div class="bar">'), end = html.indexOf('</header>');
@@ -3153,11 +3153,12 @@ test('the bar is two rows: the shot timer, then the five destinations and the to
   assert.equal((html.match(/data-clock-host/g) || []).length, 1, 'one timer host in the whole shell, in its own row');
   assert.equal((html.match(/<header>/g) || []).length, 1, 'one header');
   // Owner item 2 (round 7) gave the timer a row of its own; owner item 1 (round 8) put that row
-  // under the destinations, so the bar is two rows - the five destinations and the tools, then the
-  // clock - and nothing in .tools holds a second timer.
+  // under the destinations; round 121 (owner) folds that row onto the destinations' line wherever
+  // the line can hold it, so the bar is one line where the width allows and two where it cannot -
+  // and nothing in .tools holds a second timer.
   assert.ok(bar.includes('<div class="clockbar" role="group" aria-label="Shot timer / 出杆计时" data-clock-host></div>'),
     'the clock row is a named group with one host, empty until ops.js paints it');
-  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="clockbar"'), 'the destinations come first, the clock row under them');
+  assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="clockbar"'), 'the destinations come first, the clock after them');
   assert.ok(bar.indexOf('<nav id="nav"') < bar.indexOf('class="tools"'), 'the destinations, then the tools');
   assert.ok(bar.indexOf('class="barrow"') < bar.indexOf('class="tools"'), 'the tools share the destinations\' row, not the clock\'s');
   assert.ok(source.includes("$('#nav').innerHTML=clockNavButton()+primaryNav()"), 'render() paints six items into the nav: the timer, then the destinations');
@@ -3167,7 +3168,12 @@ test('the bar is two rows: the shot timer, then the five destinations and the to
   assert.ok(bar.includes('data-lang="en"') && bar.includes('data-lang="zh"') && bar.includes('data-theme-group'), 'the language and theme chips are untouched');
   assert.ok(css.includes('#ops-shell .barrow > nav{flex:0 1 auto;min-width:0;padding:0}'),
     'the nav keeps its own size inside its row: a row that shrinks it wraps the destinations (measured 96 px against 44)');
-  assert.ok(/#ops-shell \.bar\{flex-wrap:nowrap;flex-direction:column/.test(css), 'the bar itself is a column of two rows');
+  assert.ok(/#ops-shell \.bar\{position:relative;flex-wrap:wrap;flex-direction:row/.test(css),
+    'the bar itself is a wrapping row, so the clock joins the destinations and the tools when the line holds it (round 121)');
+  assert.ok(/#ops-shell \.clockbar\{[^}]*flex:1 0 auto/.test(css),
+    'and the clock row takes the room that is left when it shares the line, and a line of its own when it wraps');
+  assert.ok(/#ops-shell \.clockbar \.progress\{position:absolute;left:0;right:0;bottom:0/.test(css) && !/#ops-shell \.clockbar\{position:relative/.test(css),
+    'the elapsed bar rides the header\'s bottom edge, not the timer row\'s: it is anchored to the positioned .bar, so it keeps the header\'s width after the fold (it would be 321 px at 1280 on the row)');
   assert.ok(/#ops-shell \.barrow > \.tools\{flex:0 1 auto;min-width:0;flex-wrap:wrap\}/.test(css), 'the tools are the part that folds');
   assert.ok(!/\.brand/.test(css), 'the brand styles went with the brand block');
   const h = harness();
@@ -3185,6 +3191,16 @@ test('the bar is two rows: the shot timer, then the five destinations and the to
       `${lang}: render publishes the language it painted in`);
     assert.equal(h.navLabel('status'), back, `${lang}: the fifth destination keeps its name`);
   }
+});
+// ---------------------------------------------------------------- round 121 (owner, m03414)
+test('round 121 / owner: the pencil is the competition name\u2019s neighbour, not the card\u2019s far edge', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../annotator/ops.css'), 'utf8');
+  assert.ok(/#ops-shell \.card--event \.event-head\{display:grid;grid-template-columns:auto 1fr/.test(css),
+    'the first column is the name and nothing else, so the second column starts where the name ends (the `1fr auto` grid left the pencil at 1218 px at 1280 and 1660 px at 1920)');
+  assert.ok(/#ops-shell \.event-rename\{grid-column:2;justify-self:start/.test(css),
+    'the pencil stands at the start of that column, one gap from the name, and keeps its own size');
+  assert.ok(/#ops-shell \.event-params\{grid-column:1\/-1/.test(css) && /#ops-shell \.event-rename-form\{grid-column:1\/-1/.test(css),
+    'and the parameters and the rename form span both columns on the row under them, which is where round 19 put them');
 });
 // ---- owner round 2, items 3-7: the palette, the material balls and the always-on timer slot.
 test('one palette keyed by ball number colours every ball: 1-8 the owner list, 9-15 the same hues striped, 16+ wrapping', () => {
