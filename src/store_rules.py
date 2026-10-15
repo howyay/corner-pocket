@@ -125,7 +125,7 @@ def unknown_record_set(kind: str) -> str:
     with this answer, so both stores refuse an unknown kind in one wording.
 
     This function closes the defect of round 107: the sentence sat in
-    `src/store.py:256` and in `src/store_pg.py:214`.
+    `src/store.py:254` and in `src/store_pg.py:214`.
     """
     return f"unknown record set: {kind}"
 
@@ -137,6 +137,6 @@ def unknown_dataset(dataset: str) -> str:
     with this answer, so the three stores refuse an unknown dataset in one wording.
 
     This function closes the defect of round 108: the sentence sat in
-    `src/store.py:233`, in `src/store_files.py:69`, and in `src/store_pg.py:316`.
+    `src/store.py:231`, in `src/store_files.py:69`, and in `src/store_pg.py:316`.
     """
     return f"unknown dataset: {dataset}"

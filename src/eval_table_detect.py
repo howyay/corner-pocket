@@ -67,7 +67,7 @@ from src.table_detect import _order_corners  # noqa: E402
 # to ``CORNERS_SPEC["file"]`` and holds no second spelling of that name either.
 from src.calib_segments import (CORNERS_SPEC, anchors_reference_path,  # noqa: E402
                                 corners_v2_path)
-
+from src.video_errors import cannot_open  # noqa: E402
 # The output directory of this tool and of src/check_app_quad.py.  This name is the
 # one owner of the path: check_app_quad imports OUT_DIR and holds no second spelling
 # of it, and tests/test_eval_output_dir_owner.py holds the two sides together.
@@ -342,7 +342,7 @@ def read_frame(cap, t):
 def evaluate(detector, dataset, n_frames, refs, video):
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        raise RuntimeError(f"cannot open {video}")
+        raise RuntimeError(cannot_open(video))
     rows = []
     for t in sample_times(dataset, n_frames):
         frame = read_frame(cap, t)

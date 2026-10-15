@@ -34,6 +34,8 @@ import torch
 from src.box_geometry import iou
 from src.face_id import DEFAULT_FACE_STORE, add_faces, get_face_engine, load_faces
 from src.person_identity import IdentityIndex
+# The identity index document path has one home, src.store_files.identity_document.
+from src.store_files import identity_document
 # src/weight_pins.py owns the two weight paths, so this file reads the owner.
 from src import weight_pins
 from src.weight_pins import OSNET, OSNET_MEAN, OSNET_STD
@@ -65,10 +67,10 @@ class PersonPipeline:
         self.detector = detector
         self.body_encoder = body_encoder
         self._face_engine = face_engine
-        # store: a src.store Store for the identity index and the face gallery; None =
-        # the JSON files under root (the default, as always)
+        # store: a src.store Store, or None for the JSON files under root (the default).
         self.store = store
-        self.identity = identity or IdentityIndex(self.root / 'out' / 'identity' / 'clusters.json', store=store)
+        path = identity_document(self.root)
+        self.identity = identity or IdentityIndex(path, store=store)
         repo = Path(__file__).resolve().parents[1]
         self.face_store = self.root / Path(DEFAULT_FACE_STORE).relative_to(repo)
         self._gallery = None
@@ -85,19 +87,17 @@ class PersonPipeline:
 
         ultralytics answers a missing weights *path* by fetching the release
         asset from GitHub, which would turn any root that forgot the file into a
-        silent 6 MB network dependency (a scratch fixture root, a server started
-        from the wrong directory). src/frame_inference.py already refuses to
-        download; this mirrors it: root-local weights first, then the repo-local
-        copy, otherwise a RuntimeError naming both expected paths.
+        silent 6 MB network dependency. src/frame_inference.py already refuses to download;
+        this mirrors it: root-local weights first, then the repo-local copy, otherwise a
+        RuntimeError naming both expected paths.
         """
         candidates = [self.root / DETECTOR_WEIGHTS_NAME, REPO / DETECTOR_WEIGHTS_NAME]
         for path in candidates:
             if path.is_file():
                 return path
-        raise RuntimeError(
-            f"person detector weights not found: looked for {candidates[0]} and {candidates[1]}; "
-            f"downloads are disabled - place {DETECTOR_WEIGHTS_NAME} in the pipeline root "
-            f"or in the repository root")
+        raise RuntimeError(f"person detector weights not found: looked for {candidates[0]} and "
+                           f"{candidates[1]}; downloads are disabled - place {DETECTOR_WEIGHTS_NAME} "
+                           f"in the pipeline root or in the repository root")
 
     def _get_detector(self):
         if self.detector is None:

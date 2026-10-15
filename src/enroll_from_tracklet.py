@@ -10,7 +10,7 @@ Rules this module commits to (each is stated where it is used and pinned by
 tests/test_enroll_from_tracklet.py):
 
 - association: a face belongs to a track only if the face's CENTRE is inside that
-  person's box — the production rule (src/person_pipeline.py:47-49, used at :182 to
+  person's box — the production rule (src/person_pipeline.py:49-51, used at :182 to
   attach a face to a person) — plus an ambiguity guard: a face claimed by two
   person boxes in the same frame is dropped rather than assigned to both.
   `Candidate.face_iou` (face ∩ person / face area) is recorded as evidence.
@@ -105,7 +105,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-
 from src.atomic_write import write_atomic
 from src.box_geometry import iou
 from src.datasets import BUILT_IN_DATASET, STATIC
@@ -120,7 +119,8 @@ from src.ops_event_log import trim
 # Round 60 gave the summary of one list one home: src/stats.py.  This name used to
 # hold the body, and it held the same body as src/eval_faces.py pair_stats.
 from src.stats import read_pair as stats
-from src.store_files import FACE_STORE, STATE_DOCUMENT  # the owner of the two user-data paths below
+from src.store_files import FACE_STORE, IDENTITY_DOCUMENT, STATE_DOCUMENT  # the owner of the user-data paths below
+from src.video_errors import cannot_open
 # The repository root. The value equals src.person_pipeline.REPO, and the same
 # expression is used there, but this module keeps its own copy: an import of
 # src.person_pipeline loads torch and cv2 at its top level.
@@ -515,7 +515,7 @@ def scan_frames(root, dataset, start_frame, end_frame, stride=30, *, detector=No
         engine = get_face_engine()
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        raise RuntimeError(f"cannot open {video}")
+        raise RuntimeError(cannot_open(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     grace = stride * TRACK_MAX_AGE
     observations, tracks, next_id = [], {}, 1
@@ -783,7 +783,7 @@ def crop_jpeg(root, dataset, frame_index, bbox, *, pad=CROP_PAD, scale=CROP_SCAL
     video = Path(root) / DATASETS[dataset]
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        raise RuntimeError(f"cannot open {video}")
+        raise RuntimeError(cannot_open(video))
     try:
         if not cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_index)):
             raise RuntimeError(f"frame seek failed: {frame_index}")
@@ -1189,7 +1189,9 @@ if __name__ == "__main__":
 # fast path: plan from identity evidence the pipeline already stored
 # --------------------------------------------------------------------------
 
-CLUSTER_INDEX = Path("out") / "identity" / "clusters.json"
+# The identity index document path has one owner, src.store_files.IDENTITY_DOCUMENT.
+# This name keeps the shape its readers use, a repository-relative path.
+CLUSTER_INDEX = IDENTITY_DOCUMENT
 CLUSTER_MIN_KEPT = 1      # a stored face is one crop: no consistency evidence
 
 
@@ -1385,7 +1387,7 @@ def _infer(root, detector, engine, dataset):
         engine = get_face_engine()
     cap = cv2.VideoCapture(str(Path(root) / DATASETS[dataset]))
     if not cap.isOpened():
-        raise RuntimeError(f"cannot open {Path(root) / DATASETS[dataset]}")
+        raise RuntimeError(cannot_open(Path(root) / DATASETS[dataset]))
     return cap, detector, engine
 
 

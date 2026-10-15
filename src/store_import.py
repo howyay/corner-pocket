@@ -46,9 +46,9 @@ from src.datasets import BUILT_IN_DATASET, STATIC_OUT
 # The document names of a data set have that same home: the map
 # src.store_files.document_paths owns them, and document_name and correction_path
 # answer them, so every path this tool loads is the path the stores read.
-from src.store_files import (BALL_SETS, DOCUMENT_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT,
-                             correction_path, dataset_dirs, document_name, document_paths,
-                             get_document, has_documents_table, put_document)
+from src.store_files import (BALL_SETS, DOCUMENT_SETS, FACE_STORE, IDENTITY_DOCUMENT, SEED_DOCUMENT,
+                             STATE_DOCUMENT, correction_path, dataset_dirs, document_name,
+                             document_paths, get_document, has_documents_table, put_document)
 # The retention bound of the operations event log is imported from its one owner
 # (src.ops_event_log), so this importer and every writer cannot hold two bounds.
 from src.ops_event_log import MAX_EVENTS
@@ -365,7 +365,7 @@ class IdentitySet(DataSet):
     tables = ("identity_clusters", "identity_face_samples")
 
     def load(self, snap):
-        raw = snap.json("out/identity/clusters.json")
+        raw = snap.json(IDENTITY_DOCUMENT)
         if raw is None:
             return None, []
         bare = sum(1 for rec in raw.values() if "face_samples" not in rec)

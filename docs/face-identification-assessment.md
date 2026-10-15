@@ -26,8 +26,8 @@ production bar in the demo window (0.60, 0.55 cosine).
 | Face→person association (`center inside person box`), stride + signature caching | `src/person_pipeline.py:135-157`, association at `181-188` |
 | Matching + binding per frame: `best_match` → `bind_face` | `src/person_pipeline.py:203-212` |
 | Enrollment entry point: `enroll_face()` | `src/person_pipeline.py:226-234` |
-| `bind_face()`: unbound only, requires `similarity >= match_threshold + margin`, persists | `src/person_identity.py:199-221` (bar at 211, first-match-wins at 209) |
-| Index defaults (face bar) + body matching disabled | `src/person_identity.py:108-129`, `67-69` |
+| `bind_face()`: unbound only, requires `similarity >= match_threshold + margin`, persists | `src/person_identity.py:201-223` (bar at 211, first-match-wins at 209) |
+| Index defaults (face bar) + body matching disabled | `src/person_identity.py:110-131`, `67-69` |
 | HTTP `POST /api/identity/enroll` (base64 → `cv2.imdecode` → `enroll_face`) | `annotator/unified_server.py:901` the handler, `:88` the 8 MiB decoded cap with its check at `:903`, `:912` the call, `:2403` the route row, `:2866` the dispatch body cap (`_MAX_ENROLL_BODY_BYTES`, derived from the cap) |
 | HTTP `GET /api/identity/frame` (decode → `process_frame`) | `annotator/unified_server.py:215-236`, route `1016-1017` |
 | `GET /api/unified` runs the same seam, degrades to no persons on failure | `annotator/unified_server.py:451-456`, route `1018-1019` |
@@ -38,10 +38,10 @@ Two gate details worth knowing before trusting a binding:
 
 - The **effective bar is 0.47, not 0.35**: `best_match` accepts at ≥0.35 with a ≥0.12 gap
   (`src/face_id.py:200`), then `bind_face` adds `similarity >= threshold + margin`
-  (`src/person_identity.py:211`). Both are composed in `process_frame` (204-207).
+  (`src/person_identity.py:213`). Both are composed in `process_frame` (204-207).
 - **`bind_face` enforces the same margin as `best_match`** since the fix round (see 7.1). The
   binding path calls the shared `src.face_id.accept_match()` with `bind=True`
-  (`src/person_identity.py:293-315`), so a probe must reach the binding bar, 0.47, and, when a
+  (`src/person_identity.py:295-317`), so a probe must reach the binding bar, 0.47, and, when a
   runner-up is supplied, trail that runner-up by >= 0.12. Before this fix the binding path
   compared the single similarity only. One enrolment photo then produced 2 impostor binds out
   of 35 measured faces, at 0.60 and 0.55.
@@ -124,7 +124,7 @@ identity* (which is exactly what `bind_face` does), not assume continuity.
 
 This also settles the repo's older question: body/colour re-ID was disabled because its
 distributions overlap (OSNet same-person p05 0.755 vs cross-person p95 0.882,
-`src/person_identity.py:58-69`). Face similarity on the same frames separates with a 0.18
+`src/person_identity.py:58-71`). Face similarity on the same frames separates with a 0.18
 margin between classes. Face is doing work that body could not.
 
 ## 4. End-to-end demo (isolated scratch store, production code path)
@@ -205,7 +205,7 @@ stopped after the run. Nothing under `out/corner-pocket/` or `out/identity/` cha
 ### If face ID is rejected anyway, use this instead — and what it costs
 
 The repo's current fallback is body appearance + explicit seeds (`BODY_MATCH_DISABLED`,
-`src/person_identity.py:67-69`; seeds in `out/pid_seed.json`, clusters in
+`src/person_identity.py:67-71`; seeds in `out/pid_seed.json`, clusters in
 `out/identity/clusters.json`). The trade-off is measured, not estimated:
 
 | | Face (this round) | Body/colour (current fallback) |

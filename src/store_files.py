@@ -99,15 +99,15 @@ def dataset_dirs(root: Path) -> dict[str, str]:
 
 INDENT2_NL = "indent2+nl"
 INDENT1 = "indent1"
-# The format of every file `document_paths` names: the document writers of the module
-# docstring append one newline.  These files are many and their dataset folders come
-# and go, so no fixed table can hold them; is_document_path names the shapes instead.
+# The identity index document has one home: this name and `identity_document` below,
+# which joins it to a caller's root.  The format table keys that same name.
+IDENTITY_DOCUMENT = "out/identity/clusters.json"
+# The format of a document: the writers append one newline, and their dataset folders
+# come and go; is_document_path names the shapes.  A file in no table: fmt_of refuses it.
 DOCUMENT_FORMAT = INDENT2_NL
-# The byte format of each user-data file that is not a document, by its relative path.
-# IdentityIndex.save and face_id.store_faces write these two with indent=1 and no
-# trailing newline.  A file that is in neither table is refused by fmt_of.
+# Each other user-data file, by path, indent=1 with no trailing newline.
 FORMATS = {
-    "out/identity/clusters.json": INDENT1,
+    IDENTITY_DOCUMENT: INDENT1,
     FACE_STORE: INDENT1,
 }
 
@@ -255,6 +255,19 @@ def documents(conn, prefix: str = "out/") -> dict[str, str]:
 def has_documents_table(conn) -> bool:
     return conn.execute("SELECT to_regclass('json_documents')").fetchone()[0] is not None
 
+
+def identity_document(root) -> Path:
+    """The identity index document of one root: the root, then the owner's relative path.
+
+    The caller keeps its own spelling of the root, as it does with `correction_path`: a
+    repository root joins the whole relative path (``<root>/out/identity/clusters.json``),
+    and a store whose root already ends in ``out`` joins the file name, the way
+    ``JsonStore._faces_path`` joins ``FACE_STORE``.
+    """
+    relative = IDENTITY_DOCUMENT.split("/")
+    if Path(root).name == relative[0]:
+        relative = relative[-2:]
+    return Path(root).joinpath(*relative)
 
 
 # The crop set the review page reads and writes, and the two documents that set holds.

@@ -264,7 +264,7 @@ method (under `Operations.lock`), so the fix lands for both backends.
   with `player_id=None`), `bind_face` `:288-325`.  Observation (`update`, `register`,
   `record_face_sample`) stays in memory — `tests/test_unified_server.py:791`
   (`test_identity_frame_read_leaves_the_index_file_untouched`) pins that a GET never writes.
-* Callers: `src/person_pipeline.py:61` (constructs it), `unified_server.py:417-446`
+* Callers: `src/person_pipeline.py:63` (constructs it), `unified_server.py:417-446`
   (`/api/identity/seed`, `/unbind`), `:393-405` (status), `:682-691` (every unified
   frame runs `process_frame`, which may `bind_face` → a **write during `GET /api/unified`**
   when a face matches; see §8.2), `src/enroll_from_tracklet.py:1152-1159` (reads it).

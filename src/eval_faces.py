@@ -70,7 +70,7 @@ from src.store_files import FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT
 # src/weight_pins.py owns the weight paths, so this list cannot name a path that
 # the pin table no longer owns.
 from src import weight_pins
-
+from src.video_errors import cannot_open
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "out" / "face-eval"
 
@@ -599,7 +599,7 @@ def iter_frames(video, plan):
     import cv2
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        raise RuntimeError(f"cannot open {video}")
+        raise RuntimeError(cannot_open(video))
     try:
         wanted = sorted(int(i) for i in plan)
         cursor, position = 0, 0

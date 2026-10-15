@@ -78,7 +78,7 @@ from src.scan_events import RECORDS_NAME  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.event_window import (AT_TOL_S, CONTROL_HALF_S, EVENT_AFTER_S,  # noqa: E402
                               EVENT_BEFORE_S)
-
+from src.video_errors import cannot_open  # noqa: E402
 # --------------------------------------------------------------- geometry ----
 
 SCAN_W, SCAN_H = NATIVE_FRAME         # native frame size of the vod30 recording, from ball_scale
@@ -364,7 +364,7 @@ def config_for(video, dataset: str = BUILT_IN_DATASET, root=None, **overrides) -
     """
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        raise OSError(f"cannot open {video}")
+        raise OSError(cannot_open(video))
     scan_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or REF_W)
     scan_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or REF_H)
     cap.release()
@@ -532,7 +532,7 @@ def frame_detail(video, frame_index: int, ctx: ClothContext,
     cap = cv2.VideoCapture(str(video))
     try:
         if not cap.isOpened():
-            raise OSError(f"cannot open {video}")
+            raise OSError(cannot_open(video))
         cap.set(cv2.CAP_PROP_POS_FRAMES, max(1, frame_index - 1))
         ok, prev = cap.read()
         if not ok:
@@ -697,7 +697,7 @@ def scan(video, quad_px, cfg: MotionConfig = MotionConfig(), dataset: str = BUIL
     ctx = cloth_context(quad_px, cfg)
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        raise OSError(f"cannot open {video}")
+        raise OSError(cannot_open(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     capacity = (total if cfg.stride == 1 else total // max(1, cfg.stride) + 2) + 1
@@ -1723,7 +1723,7 @@ def benchmark(video, n_frames: int = 600, cfg: MotionConfig = MotionConfig(),
     ctx = cloth_context(_as_quad([[0, 0], [1, 0], [1, 1], [0, 1]]), cfg) if full else None
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        raise OSError(f"cannot open {video}")
+        raise OSError(cannot_open(video))
     last_native = last_gray = None
     started, read = time.time(), 0
     try:

@@ -57,7 +57,7 @@ from src.calib_segments import (INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa
                                 anchors_reference_name, anchors_reference_path,
                                 corners_v2_path)
 from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
-
+from src.video_errors import cannot_open  # noqa: E402
 VIDEO = media_path(ROOT, BUILT_IN_DATASET)
 ANCHORS = ROOT / anchors_reference_path(BUILT_IN_DATASET)
 SCAN_QUAD = ROOT / corners_v2_path()
@@ -293,7 +293,7 @@ def measure_frame(frame, reference, chain_prior, anchor_gray=None):
 def run(args):
     cap = cv2.VideoCapture(str(args.video))
     if not cap.isOpened():
-        raise SystemExit(f"cannot open {args.video}")
+        raise SystemExit(cannot_open(args.video))
     times = sorted({round(float(t), 3) for t in
                     list(np.arange(0.0, args.until + args.every, args.every)) + list(args.at)})
     reference = anchors_quad()

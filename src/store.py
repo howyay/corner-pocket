@@ -64,7 +64,7 @@ from src.datasets import BUILT_IN_DATASET, lookup as dataset_lookup  # noqa: E40
 # answer them.  This class reads those homes, so its three paths cannot drift from
 # the files the rest of the store layer reads.
 from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT, crops_dir,  # noqa: E402
-                             correction_path, document_name, save_document)
+                             correction_path, document_name, identity_document, save_document)
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
 # (tests/test_store_merge_rules.py walks both class bodies and fails on a copy).
@@ -79,14 +79,12 @@ from src.store_rules import unknown_dataset, unknown_record_set  # noqa: E402
 # document cannot drift from the paths the calibration readers use.
 from src.calib_segments import ARTIFACT, CALIBRATION  # noqa: E402
 from src.calib_segments import anchors_reference_name  # noqa: E402
-# precomputed artifacts the server reads whole: kind -> file under out/.  A row here
-# names a dataset, so artifact() resolves the dataset through src/datasets.py and reads
-# the folder queue() reads (out/vods/<id>/ for an imported VOD, out/scan30/ for a
-# built-in).  {scan} is that folder, relative to out/; {ds} is the dataset id, which
-# names the calibration files at the out/ root.  The two document names of the
-# calibration have one home, src/calib_segments.py:66 and :72, and their two rows
-# below read that home; the format call of artifact() fills the owner's keyword
-# {dataset}.
+# precomputed artifacts the server reads whole: kind -> file under out/.  A row names a
+# dataset, so artifact() resolves it through src/datasets.py and reads the folder queue()
+# reads (out/vods/<id>/ or out/scan30/).  {scan} is that folder, relative to out/; {ds} is
+# the dataset id.  The two document names of the calibration have one home,
+# src/calib_segments.py:66 and :72, and their two rows below read it; the format call of
+# artifact() fills the owner's keyword {dataset}.
 ARTIFACTS = {
     "queue_report": "{scan}/dense_queue_report.json",
     "queue_retired": "{scan}/dense_queue_retired.json",
@@ -266,8 +264,10 @@ class JsonStore:
 
     # -- identity -----------------------------------------------------------
     def identity_path(self) -> Path:
-        return self.out / "identity" / "clusters.json"
+        return identity_document(self.out)
 
+    # The index document path has one home, src.store_files.IDENTITY_DOCUMENT, so no
+    # reader spells the path again.
     def identity_load(self) -> dict:
         return _read(self.identity_path(), {})
 

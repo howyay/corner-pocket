@@ -66,13 +66,15 @@ from typing import Any
 import numpy as np
 
 from src.atomic_write import write_atomic
+# The identity index path has one home, src.store_files.identity_document.
+from src.store_files import identity_document
 
 try:  # package import (src.person_identity); tests may load this as a flat module
     from src.face_id import DEFAULT_BIND_BAR, DEFAULT_MARGIN, DEFAULT_THRESHOLD, accept_match
 except ImportError:  # pragma: no cover - tests/test_person_identity.py adds src/ to sys.path
     from face_id import DEFAULT_BIND_BAR, DEFAULT_MARGIN, DEFAULT_THRESHOLD, accept_match
 
-DEFAULT_PATH = Path(__file__).resolve().parents[1] / "out" / "identity" / "clusters.json"
+DEFAULT_PATH = identity_document(Path(__file__).resolve().parents[1])
 BANK_SIZE = 32          # internal body-embedding bank bound per cluster
 PERSIST_BANK = 8        # body_bank entries written to JSON (spec: max 8)
 PERSIST_FACES = 3       # enrolment face samples kept per cluster (memory + JSON)

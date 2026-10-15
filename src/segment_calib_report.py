@@ -39,7 +39,7 @@ from src.calib_segments import (VERIFIED_FRAME_HIGH, VERIFIED_FRAME_LOW,  # noqa
                                 segment_artifact_path)
 from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
 from src import events_document  # noqa: E402
-
+from src.video_errors import cannot_open  # noqa: E402
 OUT = ROOT / "out" / "segcalib" / "segment_calib_report.json"
 # The served document name has one owner, ``src/events_document.py``.  The
 # info-complete folder is not a row of ``src/datasets.py:STATIC_OUT``, so the
@@ -139,7 +139,7 @@ def measure_once(candidates, references, name, cfg, video, limit=None, sam3=None
 
     probe = PerTimeProbe(video, references, name, sam3=sam3)
     if not probe.open():
-        raise SystemExit(f"cannot open {video}")
+        raise SystemExit(cannot_open(video))
     rows = {}
     started = time.time()
     try:
@@ -181,7 +181,7 @@ def per_sample_frames(rows, references, video, times):
         forward, inverse = PerTimeProbe._pair(quad)
         p = Probe(video, forward, inverse, quad)
         if not p.open():
-            raise SystemExit(f"cannot open {video}")
+            raise SystemExit(cannot_open(video))
         probes[name] = p
     try:
         for t in times:

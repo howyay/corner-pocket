@@ -64,7 +64,7 @@ from src.stats import summary  # noqa: E402
 # The queue of selected candidates is one document, and src/candidate_scan.py owns
 # its name.  This audit reads the same name under its own scan30 set.
 from src.candidate_scan import CANDIDATES_NAME  # noqa: E402
-
+from src.video_errors import cannot_open  # noqa: E402
 #: The scan's working frame.  ``src.ball_scale`` owns it: the ball's pixel size
 #: scales with the frame, so the two facts cannot move apart.
 SMALL_W, SMALL_H = WORKING_FRAME[0], WORKING_FRAME[1]
@@ -255,7 +255,7 @@ def rail_evidence(video, times, quad_a, quad_b, size=NATIVE_FRAME):
 
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        return {"error": f"cannot open {video}"}
+        return {"error": cannot_open(video)}
     rows = []
     for t in times:
         cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, t) * 1000.0)
@@ -444,11 +444,11 @@ def highlight_reference_check(video, quad_path=None, times=None, columns=(600, 9
         return {"error": f"cannot read {path}"}
     quad = reference.quad
     if not Path(video).is_file():
-        return {"error": f"cannot open {video}", "quad_px": np.round(quad, 1).tolist()}
+        return {"error": cannot_open(video), "quad_px": np.round(quad, 1).tolist()}
     times = list(times) if times is not None else list(np.arange(2.0, 377.0, 15.0))
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
-        return {"error": f"cannot open {video}"}
+        return {"error": cannot_open(video)}
     per_side_refine, per_side_step, bottom_inset = {s: [] for s in range(4)}, {s: [] for s in range(4)}, []
     frames, refused = 0, 0
     for t in times:
