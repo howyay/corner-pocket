@@ -29,7 +29,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* import
-from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, STATIC_OUT, media_path  # noqa: E402
 # The events document has one owner, src/events_document.py.  This writer takes
 # the name of its speed field from that owner, so a rename of the field moves
 # this writer and the live route together.
@@ -48,7 +48,7 @@ from src.scan_events import (BALL_TABLE_MM_KEY, NEAREST_POCKET_KEY, POCKET_DIST_
 from src.table_geometry import homography_to_canonical, nearest_pocket  # noqa: E402
 
 VIDEO = media_path(ROOT.parent, BUILT_IN_DATASET)
-SCAN = ROOT.parent / "out" / "scan30"
+SCAN = ROOT.parent / "out" / STATIC_OUT[BUILT_IN_DATASET]
 CORNERS = corners_v2_path(root=ROOT.parent)
 
 

@@ -202,7 +202,7 @@ def document_paths(set_name: str, root: Path | None = None) -> list[str]:
         dirs = dataset_dirs(root).values() if root is not None else [dataset_dir(ds) for ds in STATIC_OUT]
         return [f"{folder}/annotations.json" for folder in dirs]
     if set_name == "labels":
-        return [f"out/{crop_set}/labels.json" for crop_set in BALL_SETS]
+        return [f"{crops_dir(crop_set)}/labels.json" for crop_set in BALL_SETS]
     if set_name == "anchors":
         return [anchors_reference_path(ds) for ds in STATIC_OUT]
     if set_name == "corrections":
@@ -254,3 +254,21 @@ def documents(conn, prefix: str = "out/") -> dict[str, str]:
 
 def has_documents_table(conn) -> bool:
     return conn.execute("SELECT to_regclass('json_documents')").fetchone()[0] is not None
+
+
+
+# The crop set the review page reads and writes, and the two documents that set holds.
+# The folder name is the set name, so BALL_SETS above owns which crop sets exist.
+CTX_DOCUMENT = "ctx.json"
+META_DOCUMENT = "meta.json"
+
+
+def crops_dir(set_name: str) -> str:
+    """The folder of a crop set, relative to the repository root.
+
+    The set name is the folder name under `out/`.  An unknown name is refused in the same
+    words as the store layer refuses it.
+    """
+    if set_name not in BALL_SETS:
+        raise ValueError(f"unknown ball set: {set_name}")
+    return f"out/{set_name}"

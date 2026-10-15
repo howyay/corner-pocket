@@ -286,7 +286,7 @@ class CalibrationNameOwnerTest(unittest.TestCase):
     def test_the_document_name_stands_once_in_the_shipped_tree(self):
         """One shipped reader still holds the whole name, and the owner holds the rest.
 
-        ``annotator/unified_server.py:2148`` reads ``self.out / "calib_vod30.json"``
+        ``annotator/unified_server.py:2149`` reads ``self.out / "calib_vod30.json"``
         in ``anchor_info``.  That file belongs to another writer this round, so the
         list holds the owner and that one site.  A third site fails here, and the
         failure names it.

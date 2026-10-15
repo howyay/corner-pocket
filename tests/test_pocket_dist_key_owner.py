@@ -84,8 +84,8 @@ SITES = {
     HOME: ((65, "home"), (66, "home"), (374, "dict"), (375, "dict")),
     "src/rebuild_events_v2.py": ((46, "import"), (46, "import"), (164, "dict"),
                                  (165, "dict"), (197, "lookup")),
-    "src/rebuild_events_calibrated.py": ((27, "import"), (27, "import"), (141, "dict"),
-                                         (142, "dict")),
+    "src/rebuild_events_calibrated.py": ((27, "import"), (27, "import"), (146, "dict"),
+                                         (147, "dict")),
     "src/candidate_scan.py": ((59, "import"), (59, "import"), (334, "dict"),
                               (441, "get"), (442, "lookup")),
     "src/dense_queue.py": ((80, "import"), (80, "import"), (329, "dict")),
@@ -94,7 +94,7 @@ SITES = {
     "src/event_gates.py": ((99, "import"), (99, "import"), (186, "get")),
     "src/shot_pot_gate.py": ((90, "import"), (1412, "dict"), (1571, "dict"),
                              (1586, "dict"), (1603, "dict")),
-    "annotator/unified_server.py": ((472, "import"), (1741, "import"), (1742, "get")),
+    "annotator/unified_server.py": ((473, "import"), (1742, "import"), (1743, "get")),
 }
 #: The module each writer takes the home names from.  A name of a row that one
 #: site needs may sit on the import line of another name of the same row.  The

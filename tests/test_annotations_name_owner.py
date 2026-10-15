@@ -78,7 +78,7 @@ SITES = {
     "src/store_check.py": ((61, "verdicts"), (65, "corrections"), (69, "labels")),
     "src/store_import.py": ((540, "verdicts"), (541, "verdicts"), (572, "labels"),
                             (600, "corrections"), (719, "verdicts")),
-    "annotator/server.py": ((44, "verdicts"), (49, "labels")),
+    "annotator/server.py": ((49, "verdicts"), (54, "labels")),
 }
 #: The names each reader takes from the home, and the line of that import.
 IMPORTS = {
@@ -86,7 +86,7 @@ IMPORTS = {
     "src/store_pg.py": (41, ("correction_path", "document_name")),
     "src/store_check.py": (29, ("document_name",)),
     "src/store_import.py": (49, ("correction_path", "document_name")),
-    "annotator/server.py": (40, ("document_name",)),
+    "annotator/server.py": (45, ("document_name",)),
 }
 #: The files that spell one of the three names as part of another fact, with the
 #: measurement behind each entry.  An entry that stops matching a live site fails the

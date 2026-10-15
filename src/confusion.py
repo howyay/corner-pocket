@@ -16,12 +16,13 @@ sys.path.insert(0, str(ROOT))            # the repo root, for the src.* import b
 from train_ball_id import BallCrops, WEIGHTS, make_model, N_CLASSES, IMG  # noqa
 # The crop-set vocabulary has one owner, src/store_files.py; this module reads it.
 from src.store_files import BALL_SETS  # noqa: E402
+from src.store_files import CTX_DOCUMENT, META_DOCUMENT, crops_dir  # noqa: E402
 
 NAME = 'resnet18'
 # BALL_SETS[0] is the label set this module reads.
-labels_dir = ROOT / 'out' / BALL_SETS[0]
+labels_dir = ROOT / crops_dir(BALL_SETS[0])
 lab = json.load(open(labels_dir / 'labels.json'))
-meta = json.load(open(labels_dir / 'meta.json'))
+meta = json.load(open(labels_dir / META_DOCUMENT))
 by_file = {r['file']: r for r in meta}
 rows = [{'t': r['t'], 'file': f, 'class': v} for f, v in lab.items() if isinstance(v, int) and f in by_file for r in [by_file[f]]]
 by_frame = {}

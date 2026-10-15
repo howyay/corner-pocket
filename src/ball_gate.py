@@ -41,7 +41,7 @@ The upper area cap, and the disagreement
       ``src/scan_events.py:153-154`` and ``src/sam3_ball_cache.py:154-156`` read
       their frames the same way, with no resize.
     * That source frame is the 1280x720 VOD tier (``src/tiny_ball_net.py:64``,
-      ``src/motion_scan.py:86``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
+      ``src/motion_scan.py:87``, ``src/dense_queue.py:74``).  Round 71, Note 1: the
       three citations named the training pair, the geometry banner and an
       unrelated import comment, so they landed one to three lines above the
       fact.  They name the line that holds the fact now.  Both caps are
@@ -52,7 +52,7 @@ The upper area cap, and the disagreement
     * No comment, docstring or test in the repository explains the 6000.
       ``grep -rn "6000" src/`` returns this one gate line plus two unrelated
       uses: a pocket-hole window (``src/calibrate.py:42``) and a progress print
-      (``src/motion_scan.py:729``).
+      (``src/motion_scan.py:730``).
 
     Ruling: one stage, two values, no measured reason.  These two values
     contradict each other.  This round does not change behaviour.  No value

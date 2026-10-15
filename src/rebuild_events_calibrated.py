@@ -33,6 +33,11 @@ from src import events_document, sam3_artifact
 # The scan document name and the shot pair gap have one home, src/scan_events.py.
 # This tool reads the scan output of that writer, so it takes both names there.
 from src.scan_events import RECORDS_NAME, SHOT_PAIR_GAP_S
+# The scan folder under out/ has one home, src/datasets.py, and the id of the built-in
+# recording has one home beside it.  This module sits at the root of src/ and imports both
+# names at the top.  src/datasets.py imports no module of this repository except
+# src.served_files and annotator.refusals, so this edge closes no cycle.
+from src.datasets import BUILT_IN_DATASET, STATIC_OUT
 
 SAM3 = sam3_artifact.artifact_path()
 EVENTS = events_document.document_path()
@@ -75,7 +80,7 @@ def main():
 
     # shots: motion peaks (records.json), linked to verified displacements
     import json as _j
-    recs = _j.load(open(ROOT.parent / "out" / "scan30" / RECORDS_NAME))
+    recs = _j.load(open(ROOT.parent / "out" / STATIC_OUT[BUILT_IN_DATASET] / RECORDS_NAME))
     t_all = np.array([r["t"] for r in recs])
     m_all = np.array([r["motion"] for r in recs])
     peaks = [i for i in range(1, len(t_all) - 1)

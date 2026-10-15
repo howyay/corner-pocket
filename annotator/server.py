@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Tiny review server for the pool-shot/pot event annotator.
 
-Serves the static app (index.html) plus two API endpoints:
+Serves the static app (index.html) plus six API endpoints:
   GET  /api/events      -> the events.json produced by scan_events.py
   POST /api/annotate    -> {event_id, verdict: "correct"|"wrong"|"unsure", note}
                            appended to annotations.json (persisted)
+  GET  /api/annotations -> the annotations.json this server wrote
+  GET  /api/actors      -> the actor index of the scan folder
+  GET  /api/crops       -> the crop files of one ball set
+  POST /api/ball_label  -> {crop, label} written to the labels.json of that set
 Usage: python3 server.py [events.json] [port]
 """
 import json
@@ -37,6 +41,7 @@ from src.events_actors import join_events_to_actors  # noqa: E402
 # argument spelled the first crop-set name a second time. The two documents this
 # server serves (the verdicts file beside events.json and the labels file of the crop
 # base) are the documents the store reads; document_name answers both from that home.
+from src.store_files import CTX_DOCUMENT, META_DOCUMENT, crops_dir  # noqa: E402
 from src.store_files import BALL_SETS, document_name  # noqa: E402
 from src.store import SHARED_ARTIFACTS  # noqa: E402
 EVENTS_FILE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "events.json"
@@ -44,8 +49,8 @@ STATIC_ROOT = EVENTS_FILE.parent  # evidence images live next to events.json
 ANNOT_FILE = STATIC_ROOT / document_name("verdicts")
 # optional third arg: crop-set base dir (defaults to the first label set)
 CROP_BASE = Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else \
-    ROOT.parent / "out" / BALL_SETS[0]
-LABEL_META = CROP_BASE / "meta.json"
+    ROOT.parent / crops_dir(BALL_SETS[0])
+LABEL_META = CROP_BASE / META_DOCUMENT
 LABELS_FILE = CROP_BASE / document_name("labels")
 CROP_DIR = CROP_BASE
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8123
@@ -91,7 +96,7 @@ class Handler(BaseHTTPRequestHandler):
                 labels = json.loads(LABELS_FILE.read_text())
             meta = json.loads(LABEL_META.read_text())
             ctx = {}
-            ctx_file = CROP_DIR / "ctx.json"
+            ctx_file = CROP_DIR / CTX_DOCUMENT
             if ctx_file.exists():
                 ctx = json.loads(ctx_file.read_text())
             for row in meta:

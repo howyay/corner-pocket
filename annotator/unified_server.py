@@ -69,7 +69,8 @@ from annotator.pipeline_stages import DEFAULT_DETECTORS, frame_detectors  # noqa
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it here, so the console's ball-set route and that owner cannot hold
 # two different lists of accepted names.
-from src.store_files import BALL_SETS, FACE_STORE, dump_document  # noqa: E402
+from src.store_files import (BALL_SETS, CTX_DOCUMENT, FACE_STORE, META_DOCUMENT, crops_dir,  # noqa: E402
+                            dump_document)
 # The face store path has one owner, src/store_files.py.  This module imports that
 # name and builds the enrolment scratch path from it, so a move of the path reaches
 # both readers below.  The scratch copy sits under out/enroll-eval, so the tail
@@ -1877,7 +1878,7 @@ class Backend:
     def crops(self, name):
         if name not in BALL_SETS:
             raise APIError("unknown ball set", 404)
-        return self.out / name
+        return self.root / crops_dir(name)
 
     def video(self, dataset):
         found = self.registered(dataset)
@@ -2245,9 +2246,9 @@ class Backend:
         if len(parts) == 4 and parts[:2] == ["api", "balls"] and parts[3] == "meta":
             base = self.crops(parts[2])
             labels = self.store().labels_get(parts[2])
-            ctx = load(base / "ctx.json", {})
+            ctx = load(base / CTX_DOCUMENT, {})
             items = []
-            for row in load(base / "meta.json", []):
+            for row in load(base / META_DOCUMENT, []):
                 item = dict(row, file=Path(row["file"]).name)
                 item["ctx"] = Path(ctx[row["file"]]).name if ctx.get(row["file"]) else None
                 items.append(item)
@@ -2344,7 +2345,7 @@ class Backend:
 
     def _route_ball_label(self, parts, p):
         base = self.crops(parts[2])
-        rows = load(base / "meta.json", [])
+        rows = load(base / META_DOCUMENT, [])
         row = next((r for r in rows if Path(r["file"]).name == p.get("file")), None)
         if row is None:
             raise APIError("unknown crop")
@@ -2450,13 +2451,13 @@ class Backend:
     def media(self, parts):
         if len(parts) == 4 and parts[:2] == ["media", "balls"]:
             base = self.crops(parts[2])
-            allowed = {Path(r["file"]).name for r in load(base / "meta.json", [])}
+            allowed = {Path(r["file"]).name for r in load(base / META_DOCUMENT, [])}
             if parts[3] not in allowed:
                 raise APIError("unknown crop", 404)
             return safe_file(base, parts[3])
         if len(parts) == 5 and parts[:2] == ["media", "balls"] and parts[3] == "ctx":
             base = self.crops(parts[2])
-            allowed = {Path(v).name for v in load(base / "ctx.json", {}).values() if v}
+            allowed = {Path(v).name for v in load(base / CTX_DOCUMENT, {}).values() if v}
             if parts[4] not in allowed:
                 raise APIError("unknown context", 404)
             return safe_file(base / "ctx", parts[4])

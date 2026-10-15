@@ -52,7 +52,7 @@ from src.ball_scale import NATIVE_FRAME, WORKING_FRAME, scale_between  # noqa: E
 from src.calib_segments import (CORNERS_SPEC, INHERITED_SIDES_KEY, MASK_OFFSET_PX_KEY,  # noqa: E402
                                 SCAN_CORNERS, UNVERIFIED_SIDES_KEY, VERIFIED_FRAMES,
                                 VERIFIED_SIDES_KEY, anchors_reference_path)
-from src.datasets import BUILT_IN_DATASET, media_path  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, STATIC_OUT, media_path  # noqa: E402
 from src.event_gates import CANON_H, CANON_W, POCKETS_MM  # noqa: E402
 from src.pipeline import homography_to_canonical  # noqa: E402
 # The homogeneous-division rule has one owner, src/projection.py.  The two
@@ -77,7 +77,7 @@ ANCHORS = ROOT / anchors_reference_path(BUILT_IN_DATASET)
 # the file moves this reader too.  Round 93 found the path spelled here by hand.
 SCAN_QUAD = ROOT / SCAN_CORNERS
 VIDEO = media_path(ROOT, BUILT_IN_DATASET)
-CANDIDATES = ROOT / "out" / "scan30" / CANDIDATES_NAME
+CANDIDATES = ROOT / "out" / STATIC_OUT[BUILT_IN_DATASET] / CANDIDATES_NAME
 OUT = ROOT / "out" / "calib_mapping_audit.json"
 # Frames the segment artifact already measured: early (unoccluded), the two
 # verified low-coverage event frames, and the last sample of the VOD.  The two

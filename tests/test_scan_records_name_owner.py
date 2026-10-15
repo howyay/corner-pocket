@@ -4,8 +4,9 @@ The scan writes its per-sample document under one name.  That name has one home:
 `RECORDS_NAME` in `src/scan_events.py`, beside `BALL_TABLE_MM_KEY`.  Five reader
 sites in four tools take the name from that home and join it to their own
 directory: `src/rebuild_events_v2.py` joins `SCAN`, `src/rebuild_events_calibrated.py`
-joins `out/scan30`, `src/timing_verify.py` joins `out/scan30` twice (a default
-parameter and an argparse default), and `src/motion_scan.py` joins `out/<name>`.
+joins the scan folder through the home `STATIC_OUT` of `src/datasets.py`,
+`src/timing_verify.py` joins `out/scan30` twice (a default parameter and an argparse
+default), and `src/motion_scan.py` joins `out/<name>`.
 Before round 108 each site spelled the whole file name again.
 
 The cases below read the home, count the spelling sites under `src/`, read every
@@ -34,13 +35,22 @@ HOME_NAME = "RECORDS_NAME"
 #: The file name that the home must answer.
 FILE_NAME = "records.json"
 #: The reader sites: the file, the number of sites, and the directory token that
-#: the site joins to the home.
+#: the site joins to the home.  The token is the literal directory of the reader, or
+#: the name of the folder home that answers it.  ``src/rebuild_events_calibrated.py``
+#: takes its scan folder from ``STATIC_OUT`` of ``src/datasets.py``, so a reader that
+#: spells ``"scan30"`` again loses the token and answers no site here.
 READERS = (
     ("src/rebuild_events_v2.py", 1, "SCAN"),
-    ("src/rebuild_events_calibrated.py", 1, "scan30"),
+    ("src/rebuild_events_calibrated.py", 1, "STATIC_OUT"),
     ("src/timing_verify.py", 2, "out/scan30"),
     ("src/motion_scan.py", 1, "name"),
 )
+#: The folder home of a reader whose directory token is a home name: the module and
+#: the name that the reader must import, so the token of its join is the home of the
+#: folder and not a local name of the reader.
+FOLDER_HOMES = {
+    "src/rebuild_events_calibrated.py": ("src.datasets", "STATIC_OUT"),
+}
 #: The number of files under src/ that spell the file name in CODE, and the number
 #: of code sites that the owner holds.  A docstring may name the file: prose keeps
 #: the history of a patch, and it does not read the name.
@@ -104,6 +114,16 @@ def import_sites(relative: str) -> list[str]:
     return found
 
 
+def imported_names(relative: str, module: str) -> list[str]:
+    """The local names of one reader that it takes from one module."""
+    found = []
+    for node in ast.walk(ast.parse(text_of(relative))):
+        if isinstance(node, ast.ImportFrom) and node.module == module:
+            for alias in node.names:
+                found.append(alias.asname or alias.name)
+    return sorted(found)
+
+
 def build_sites(relative: str, directory: str) -> list[str]:
     """The sites of one reader that join the home to the directory of that reader."""
     return [report(relative, number, line, f"this line joins {HOME_NAME} to {directory}")
@@ -142,6 +162,13 @@ class ScanRecordsNameOwner(unittest.TestCase):
                 self.assertEqual(1, len(import_sites(relative)),
                                  "a reader must take the home from the owner:\n"
                                  + "\n".join(import_sites(relative)))
+                home = FOLDER_HOMES.get(relative)
+                if home is not None:
+                    module, name = home
+                    self.assertIn(name, imported_names(relative, module),
+                                  f"a reader must take its scan folder from {module}.{name},"
+                                  " and it does not import that name: the token of its "
+                                  f"join is another name")
                 sites = build_sites(relative, directory)
                 self.assertEqual(count, len(sites),
                                  f"a reader must join {HOME_NAME} to {directory}:\n"

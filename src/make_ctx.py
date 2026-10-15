@@ -20,10 +20,11 @@ ROOT = Path(__file__).resolve().parents[1]
 VIDEO = media_path(ROOT, "highlight")
 # The crop-set vocabulary has one owner, src/store_files.py; this module reads it.
 from src.store_files import BALL_SETS  # noqa: E402
-CROP_DIR = ROOT / "out" / BALL_SETS[0]
-META = CROP_DIR / "meta.json"
+from src.store_files import CTX_DOCUMENT, META_DOCUMENT, crops_dir  # noqa: E402
+CROP_DIR = ROOT / crops_dir(BALL_SETS[0])
+META = CROP_DIR / META_DOCUMENT
 CTX_DIR = CROP_DIR / "ctx"
-OUT_JSON = CROP_DIR / "ctx.json"
+OUT_JSON = CROP_DIR / CTX_DOCUMENT
 
 cap = cv2.VideoCapture(str(VIDEO))
 fps = cap.get(cv2.CAP_PROP_FPS)

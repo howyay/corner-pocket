@@ -63,7 +63,7 @@ from src.datasets import BUILT_IN_DATASET, lookup as dataset_lookup  # noqa: E40
 # src.store_files.document_paths owns them, and document_name and correction_path
 # answer them.  This class reads those homes, so its three paths cannot drift from
 # the files the rest of the store layer reads.
-from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT,  # noqa: E402
+from src.store_files import (BALL_SETS, FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT, crops_dir,  # noqa: E402
                              correction_path, document_name, save_document)
 # The edit rules of one operator record have one home: src/store_rules.py. This class
 # and PostgresStore call that owner, so neither class holds a second copy of a rule
@@ -340,7 +340,7 @@ class JsonStore:
     def _labels_path(self, crop_set: str) -> Path:
         if crop_set not in BALL_SETS:
             raise ValueError(f"unknown ball set: {crop_set}")
-        return self.out / crop_set / document_name("labels")
+        return self.root / crops_dir(crop_set) / document_name("labels")
 
     def labels_get(self, crop_set: str) -> dict:
         return _read(self._labels_path(crop_set), {})

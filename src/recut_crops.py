@@ -36,9 +36,10 @@ from src.weight_pins import SAM3, SAM3_BALL_PROMPT
 VIDEO = media_path(ROOT, "highlight")
 # The crop-set vocabulary has one owner, src/store_files.py; this module reads it.
 from src.store_files import BALL_SETS  # noqa: E402
-CROP_DIR = ROOT / 'out' / BALL_SETS[0]
+from src.store_files import CTX_DOCUMENT, META_DOCUMENT, crops_dir  # noqa: E402
+CROP_DIR = ROOT / crops_dir(BALL_SETS[0])
 CTX_DIR = CROP_DIR / 'ctx'
-META = CROP_DIR / 'meta.json'
+META = CROP_DIR / META_DOCUMENT
 TIMES = list(HIGHLIGHT_SAMPLE_TIMES)
 
 os.makedirs(CTX_DIR, exist_ok=True)
@@ -194,7 +195,7 @@ cap.release()
 # append genuinely new instances that matched no old crop (extra balls found)
 print('new meta rows:', len(new_meta), flush=True)
 META.write_text(json.dumps(new_meta, indent=1))
-(CROP_DIR / 'ctx.json').write_text(json.dumps(ctx_map, indent=1))
+(CROP_DIR / CTX_DOCUMENT).write_text(json.dumps(ctx_map, indent=1))
 print('warnings:', len(warnings))
 for w in warnings[:30]:
     print(' -', w)

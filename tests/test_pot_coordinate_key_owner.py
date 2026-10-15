@@ -4,7 +4,7 @@ The walk of round 107 found five live spellings of one key of a pot event:
 
 * ``src/scan_events.py:373`` - the write of the served document;
 * ``src/rebuild_events_v2.py:163`` - the first rebuild tool;
-* ``src/rebuild_events_calibrated.py:140`` - the second rebuild tool;
+* ``src/rebuild_events_calibrated.py:145`` - the second rebuild tool;
 * ``src/event_gates.py:180`` - the gate reads the row back;
 * ``annotator/index.html:100`` - the pot line of the served page.
 
@@ -73,7 +73,7 @@ CONSTANT_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 SITES = {
     HOME: ((58, "home"), (373, "dict")),
     "src/rebuild_events_v2.py": ((46, "import"), (164, "dict")),
-    "src/rebuild_events_calibrated.py": ((27, "import"), (141, "dict")),
+    "src/rebuild_events_calibrated.py": ((27, "import"), (146, "dict")),
     "src/event_gates.py": ((99, "import"), (180, "get")),
 }
 #: The module each reader takes the home from.

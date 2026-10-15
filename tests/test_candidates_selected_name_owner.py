@@ -25,10 +25,11 @@ interpreter: a process that imports ``src.candidate_scan`` answers False for
 root, because the audit answers numpy, cv2 and torch before the home lands.  A
 second case measures that answer too.
 
-The scan30 set.  ``src/calib_mapping_audit.py`` keeps ``"out" / "scan30"`` of its
-own, because the writer takes an ``out_dir`` argument.  The folder and the name are
-two facts.  A case pins the folder of the reader, so a later round cannot fold the
-two facts into one line.
+The scan30 set.  ``src/calib_mapping_audit.py`` takes the scan folder from the home
+``STATIC_OUT`` of ``src/datasets.py``, because the writer takes an ``out_dir``
+argument and no reader may spell the folder again.  The folder and the name are two
+facts, and each one has a home.  A case pins both reads of the one line, so a round
+that spells ``"out" / "scan30"`` again reddens it instead of passing.
 
 The test fixture.  The skip guard of the provenance case reads the same document.
 The measurement says that it must read the home: with a bare literal, a rename of
@@ -88,10 +89,14 @@ IMPORTS = {
     "src/calib_mapping_audit.py": ("src.candidate_scan", True),
     "tests/test_calib_mapping_audit.py": ("src.candidate_scan", False),
 }
-#: The reader of the path, the folder it owns, and the line that joins the two.
+#: The reader of the path, the folder home it takes the scan30 folder from, the name
+#: home it reads the file name from, and the line that joins the two.  The folder and
+#: the name are two facts with two homes, so neither one may fold into the other.
 READER = "src/calib_mapping_audit.py"
 READER_LINE = 80
-READER_FOLDER = '"out" / "scan30" /'
+READER_FOLDER_HOME = "src.datasets"
+READER_FOLDER_NAME = "STATIC_OUT"
+READER_FOLDER = "STATIC_OUT[BUILT_IN_DATASET]"
 #: The directories and patterns the anti-copy walk reads.
 WALKED = ("src/**/*.py", "annotator/**/*.py", "tools/**/*.py", "scripts/**/*.py",
           "annotator/**/*.html", "annotator/**/*.js", "annotator/**/*.css",
@@ -168,15 +173,20 @@ def name_sites(text: str, where: str) -> list:
     return sorted(set(found))
 
 
-def imported_names(text: str, where: str, module: str) -> list:
+def imported_locals(text: str, where: str, module: str) -> list:
     """Every local name one module imports from another, as ``(line, name)``."""
     found = []
     for node in ast.walk(ast.parse(text, filename=where)):
         if isinstance(node, ast.ImportFrom) and node.module == module:
-            for alias in node.names:
-                if alias.name == HOME_NAME:
-                    found.append((node.lineno, alias.asname or alias.name))
+            found.extend((node.lineno, alias.asname or alias.name)
+                         for alias in node.names)
     return sorted(found)
+
+
+def imported_names(text: str, where: str, module: str) -> list:
+    """Every local name one module takes from another for the home, as (line, name)."""
+    return [(number, name) for number, name in imported_locals(text, where, module)
+            if name == HOME_NAME]
 
 
 def body_imports(text: str, where: str, module: str) -> list:
@@ -320,17 +330,28 @@ class ReaderTests(unittest.TestCase):
                          "a site of the name does not read the home:\n"
                          + "\n".join(offenders))
 
-    def test_the_reader_keeps_its_own_scan30_set(self):
-        """The folder and the name are two facts, and the reader holds both.
+    def test_the_reader_takes_the_scan30_folder_from_its_home(self):
+        """The folder and the name are two facts, and each one has a home.
 
-        The writer takes an ``out_dir`` argument, so a round that folded the folder
-        into the home would change the value of the fact.  This case pins the
-        folder line of the reader.
+        The writer takes an ``out_dir`` argument, so the folder may not fold into the
+        name home.  This case pins the reads of the one line: the folder home
+        ``STATIC_OUT`` of ``src/datasets.py``, indexed by the built-in dataset, and the
+        name home ``CANDIDATES_NAME`` of the writer.  A line that spells
+        ``"out" / "scan30"`` again loses the folder home, and a line that spells the
+        file name again loses the name home, so neither shortcut passes.
         """
         line = source_lines(READER)[READER_LINE - 1]
         self.assertIn(READER_FOLDER, line,
                       report(READER, READER_LINE, line,
-                             "the reader lost its own %s set" % READER_FOLDER.strip()))
+                             "the reader does not take its scan30 folder from %s of %s"
+                             % (READER_FOLDER_NAME, READER_FOLDER_HOME)))
+        taken = [name for _, name in imported_locals(source_text(READER), READER,
+                                                     READER_FOLDER_HOME)]
+        self.assertIn(READER_FOLDER_NAME, taken,
+                      report(READER, READER_LINE, line,
+                             "the reader does not take %s from %s, so the folder of "
+                             "that line is another name"
+                             % (READER_FOLDER_NAME, READER_FOLDER_HOME)))
         self.assertIn(HOME_NAME, line,
                       report(READER, READER_LINE, line,
                              "the reader does not read %s of %s" % (HOME_NAME, HOME)))

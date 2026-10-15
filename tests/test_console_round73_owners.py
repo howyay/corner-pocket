@@ -21,7 +21,7 @@ sites.
   (``annotator/ops.js:132``, ``annotator/vision-stage.js:958``), and ``annotator/vod_import.py``
   imports ``size_text`` for its import sentence (:572).
 * **The default live-detector set.**  The pair ``('table', 'person')`` stood at four sites: the
-  two service doors (``annotator/live_processing.py:378``, ``annotator/unified_server.py:2061``)
+  two service doors (``annotator/live_processing.py:378``, ``annotator/unified_server.py:2062``)
   and the two console sites (``annotator/ops.js:766``, ``annotator/app.js:71``).  The console
   copy was held by one case (``tests/test_ops.js:264``); the two service copies were held by
   none.  ``annotator/pipeline_stages.py:757`` owns the set now, in ``DEFAULT_DETECTORS``, beside

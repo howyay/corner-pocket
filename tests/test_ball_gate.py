@@ -17,7 +17,7 @@ a test and not a claim.
 
 Nothing here imports a detector, and nothing here reads out/ or data/.  Two gate
 sites are straight-line scripts: src/collect2.py:25-26 makes out/ directories at
-import, and src/recut_crops.py:47 reads out/unlabeled_crops/meta.json at import.
+import, and src/recut_crops.py:48 reads out/unlabeled_crops/meta.json at import.
 Their binding is therefore checked by running the file's own import statement --
 the technique tests/test_table_geometry.py:271 uses for src/audit_calib.py.
 """
@@ -47,7 +47,7 @@ RADIUS_VALUES = (4.0, 60.0)
 #: A name is a radius name when one of its tokens is one of these words ...
 RADIUS_WORDS = ("r", "radius")
 #: ... and every other token is one of these qualifiers.  The vocabulary is what
-#: keeps ``pad_r`` (src/motion_scan.py:1644, the padding of a crop) out: "pad" is
+#: keeps ``pad_r`` (src/motion_scan.py:1645, the padding of a crop) out: "pad" is
 #: not a qualifier, so that 60 stays a padding and never a radius.
 RADIUS_QUALIFIERS = ("min", "max", "ball", "sam3")
 #: The four spellings the gate sites used before the radius band moved, written

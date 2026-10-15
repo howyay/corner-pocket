@@ -123,7 +123,7 @@ The scan frame wins by 3×, so the claims really are scan-frame millimetres.
 | `src/event_gates.py:63 POCKETS_MM` + `nearest_pocket` (pocket radii, `pot_pocket_r_mm=100`) | canonical mm, mapped by A wherever a pixel is involved | **right** |
 | `src/eval_events.py` claim projections (`geometry_gap_px`, `from/to_in_cloth_px`, `census_geometry_gap_px`) | **B was needed; A was used** | **wrong — fixed** |
 | `src/info_complete_scan.py:207-212` (writes the claims' mm) | its own detector median | self-consistent; see §4 |
-| `src/sam3_ball_cache.py:103,176`, `src/scan_events.py:244`, `src/timing_verify.py:781`, `src/tiny_ball_net.py:45`, `annotator/unified_server.py:485` | B, for mask/quads/detector inputs | consistent with the claim frame; none of them claims to report physical mm |
+| `src/sam3_ball_cache.py:103,176`, `src/scan_events.py:244`, `src/timing_verify.py:781`, `src/tiny_ball_net.py:45`, `annotator/unified_server.py:486` | B, for mask/quads/detector inputs | consistent with the claim frame; none of them claims to report physical mm |
 
 ### The consumer fix (additive, no data renamed)
 
@@ -214,7 +214,7 @@ supported) stays silent.
 
 `out/fixed_corners.json` = `[[722,452],[1177,449],[1433,844],[467,849]]` on
 1920×1080 is the highlight's reference (`src/table_refine.py:85`; also
-`src/eval_table_detect.py:56`, `src/motion_scan.py:316`, `src/quad_fit.py:132`,
+`src/eval_table_detect.py:56`, `src/motion_scan.py:317`, `src/quad_fit.py:132`,
 `src/quad_fit_lines.py:213`, `src/audit_calib.py:71`). There are no hand anchors
 for the highlight, so the app path gets no seed and falls back to the naive
 detector on the 960×540 copy (13.28 px median against the 1.90 px full-res

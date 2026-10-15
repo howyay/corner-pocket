@@ -68,7 +68,7 @@ SITES = (
     ("src/frame_inference.py", 225),
     ("src/multiplex_demo.py", 159),
     ("src/pipeline.py", 270),
-    ("src/recut_crops.py", 96),
+    ("src/recut_crops.py", 97),
     ("src/sam3_ball_cache.py", 172),
     ("src/sam3_ball_cache.py", 260),
     ("src/scan_events.py", 153),

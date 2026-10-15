@@ -46,7 +46,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from src.datasets import BUILT_IN_DATASET, media_relpath
+from src.datasets import BUILT_IN_DATASET, STATIC_OUT, media_relpath
 from src.box_geometry import iou
 from src.face_id import (
     DEFAULT_MARGIN,
@@ -75,7 +75,7 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "out" / "face-eval"
 
 DATASETS = {  # id -> (video path relative to repo, scan dir, frame width)
-    BUILT_IN_DATASET: (media_relpath(REPO, BUILT_IN_DATASET), "scan30", 1280),
+    BUILT_IN_DATASET: (media_relpath(REPO, BUILT_IN_DATASET), STATIC_OUT[BUILT_IN_DATASET], 1280),
     "highlight": (media_relpath(REPO, "highlight"), "scan_highlight", 1920),
 }
 # Sampling plan defaults: 16 anchors x 10 frames on the 30-minute VOD plus
@@ -171,7 +171,7 @@ def table_role(person_box, corners):
 
 def load_corners(scan_dir):
     """Cloth quad for a dataset; the highlight VOD reuses the vod30 corners file."""
-    for name in (scan_dir, "scan30"):
+    for name in (scan_dir, STATIC_OUT[BUILT_IN_DATASET]):
         path = REPO / "out" / name / "corners.json"
         try:
             data = json.loads(path.read_text(encoding="utf-8"))

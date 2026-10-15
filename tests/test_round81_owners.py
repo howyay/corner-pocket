@@ -15,7 +15,7 @@ Round 81 measured three duplications, each one a fact with two homes:
    the one home now; the fit tool imports it.
 3. The three pretrained weight names stood in the model loop of
    ``src/train_ball_id.py``, and ``ResNet18_Weights.IMAGENET1K_V1`` stood a second
-   time at ``src/confusion.py:42``, where no test pinned it.  The ``WEIGHTS``
+   time at ``src/confusion.py:43``, where no test pinned it.  The ``WEIGHTS``
    mapping of ``src/train_ball_id.py`` is the one home now; the confusion script
    reads it.
 

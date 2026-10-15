@@ -440,9 +440,9 @@ class JsClassHooksOwnerTest(unittest.TestCase):
         """The popover pair meets on one page only, and that page is ops.html.
 
         The review template `annotator/app.html` is not served: the alias table at
-        `annotator/unified_server.py:202` answers the route `/` with `ops.html`, the
-        redirect table at `annotator/unified_server.py:207` sends `/app.html` to `/`,
-        and the route at `annotator/unified_server.py:2997` hands the template to
+        `annotator/unified_server.py:203` answers the route `/` with `ops.html`, the
+        redirect table at `annotator/unified_server.py:208` sends `/app.html` to `/`,
+        and the route at `annotator/unified_server.py:2998` hands the template to
         `annotator/ops.js` as a string for the review root.  The dispatcher stands in
         `/vision-stage.js` and the emitter stands in `/app.js`, so
         `annotator/ops.html` must load both of them.
