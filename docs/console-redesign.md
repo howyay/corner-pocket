@@ -22,7 +22,7 @@
 | `status`（后台） | 系统自己 —— 只有出问题时才占导航位 | 有需要维护的事实时 |
 
 今晚页内部有四个**由数据推断**的状态（未开赛 / 报名中 / 比赛中 / 收尾），它们不是 tab：没有可点的分层菜单，状态由 `data` 推导，按钮按"服务端现在允许什么动作"出现或禁用。
-Play 的三段（Queue / Tables / Bracket）**合并成一页**：`playScreen()` 本来就同时渲染三段（`ops.js:49`），只是加 `hidden`——本次把三段内容的排版权重改掉，并把那一排 `nav.playtabs`（`ops.js:46`、`ops.css:669`）整排删除。
+Play 的三段（Queue / Tables / Bracket）**合并成一页**：`playScreen()` 本来就同时渲染三段（`ops.js:49`），只是加 `hidden`——本次把三段内容的排版权重改掉，并把那一排 `nav.playtabs`（`ops.js:46`、`ops.css:651`）整排删除。
 
 ---
 
@@ -105,9 +105,9 @@ needsBackRoom() =
 
 ### 1.6 移动端（≤750 px）与顶栏的关系
 
-`ops.css:697-705` 的现有规则保持不变并**推广**：`#nav` 在 ≤750 px 隐藏，`#tabbar` 变为固定底栏。第 1 条改的是顶栏，底栏不是"第二层菜单"，而是**同一个 `primaryNav()` 的第二个渲染位置**——`tabbarHTML()`（`ops.js:43`）改为读 `primaryNav()`，`barTabs`/`barMore`/`moreOpen`（`ops.js:40-41`）三个变量与 `#tabbar-more` 展开面板**整体删除**（第 2 节）。
+`ops.css:679-687` 的现有规则保持不变并**推广**：`#nav` 在 ≤750 px 隐藏，`#tabbar` 变为固定底栏。第 1 条改的是顶栏，底栏不是"第二层菜单"，而是**同一个 `primaryNav()` 的第二个渲染位置**——`tabbarHTML()`（`ops.js:43`）改为读 `primaryNav()`，`barTabs`/`barMore`/`moreOpen`（`ops.js:40-41`）三个变量与 `#tabbar-more` 展开面板**整体删除**（第 2 节）。
 
-底栏在手机上有 4 个等宽槽（条件成立时 5 个）。`ops.css:697` 的 `.tabbar-slot{flex:1 1 0}` 直接支持 4 或 5 个槽，无需新样式。
+底栏在手机上有 4 个等宽槽（条件成立时 5 个）。`ops.css:679` 的 `.tabbar-slot{flex:1 1 0}` 直接支持 4 或 5 个槽，无需新样式。
 
 ---
 
@@ -136,9 +136,9 @@ needsBackRoom() =
 
 | 被删的层 | 位置 | 为什么它本来就不该在 | 内容去哪 |
 |---|---|---|---|
-| `nav.phases`（register/rack/play/close） | `ops.js:33` `phaseStrip()`、`ops.css:654` | 四个"阶段"不是四个目的地，是**一晚的四个时刻**；而且 `curPhase()`（`ops.js:31`）已经能在没有它的情况下算出当前阶段——条子只是把算出来的东西又画了一遍 | 变成顶部一条**只读进度条** `.scene`（无 `button`、无 `data-phase`、无 `aria-current`），以及四张**按状态出现的卡** |
-| `nav.playtabs`（queue/tables/bracket） | `ops.js:46` `playStrip()`、`ops.css:669` | 三段内容 `playScreen()`（`ops.js:49`）**同时渲染**，只是加 `hidden`；一排 tab 存在的唯一作用是让操作员把自己已经看得到的东西藏起来 | 三段按 2.3 的权重排成一页 |
-| `#tabbar-more`（More 展开） | `ops.js:43`、`ops.css:704` | 一个"更多"按钮把两个目的地藏在一层后面，而它们和其它三项是同级对象 | 常驻 4 槽（1.4/1.6）；Back room 条件出现时不进 More，直接占一个槽 |
+| `nav.phases`（register/rack/play/close） | `ops.js:33` `phaseStrip()`、`ops.css:636` | 四个"阶段"不是四个目的地，是**一晚的四个时刻**；而且 `curPhase()`（`ops.js:31`）已经能在没有它的情况下算出当前阶段——条子只是把算出来的东西又画了一遍 | 变成顶部一条**只读进度条** `.scene`（无 `button`、无 `data-phase`、无 `aria-current`），以及四张**按状态出现的卡** |
+| `nav.playtabs`（queue/tables/bracket） | `ops.js:46` `playStrip()`、`ops.css:651` | 三段内容 `playScreen()`（`ops.js:49`）**同时渲染**，只是加 `hidden`；一排 tab 存在的唯一作用是让操作员把自己已经看得到的东西藏起来 | 三段按 2.3 的权重排成一页 |
+| `#tabbar-more`（More 展开） | `ops.js:43`、`ops.css:686` | 一个"更多"按钮把两个目的地藏在一层后面，而它们和其它三项是同级对象 | 常驻 4 槽（1.4/1.6）；Back room 条件出现时不进 More，直接占一个槽 |
 
 ### 2.3 今晚页的四个状态：无 tab 怎么"有状态"
 
@@ -813,13 +813,13 @@ dataset ──开始标记──▶ marking ⇄ match-draft（逐场：边界 / 
 
 | # | 店主原话 | 改哪些函数/区域 | 验收方式 |
 |---|---|---|---|
-| 1 | 去掉顶栏品牌区，tab 移进顶栏 | `annotator/ops.html` 的 `<header><div class="bar">`（`.brand`→`.hall`，删 `<small id="tagline">`，`<nav id="nav">` 移入 `.bar`）；`ops.js:103` `render()` 删 `#tagline` 赋值、`#nav` 重绘改读 `primaryNav()`；`ops.css:72` 拆 `.bar > nav` 规则、删 `.brand` 样式（`ops.css:80-82`）、删 `[data-tab=vision] .bar` 特例（`ops.css:487-488`） | 截图 1440 顶栏只有一行；断言 `ops.html` 里 `id="tagline"` 不存在、`#nav` 是 `.bar` 的后代；新增测试「顶栏只有一行：`.bar` 的子元素是 `.hall`/`#nav`/`.tools`」 |
+| 1 | 去掉顶栏品牌区，tab 移进顶栏 | `annotator/ops.html` 的 `<header><div class="bar">`（`.brand`→`.hall`，删 `<small id="tagline">`，`<nav id="nav">` 移入 `.bar`）；`ops.js:103` `render()` 删 `#tagline` 赋值、`#nav` 重绘改读 `primaryNav()`；`ops.css:72` 拆 `.bar > nav` 规则、删 `.brand` 样式（`ops.css:80-78`）、删 `[data-tab=vision] .bar` 特例（`ops.css:469-470`） | 截图 1440 顶栏只有一行；断言 `ops.html` 里 `id="tagline"` 不存在、`#nav` 是 `.bar` 的后代；新增测试「顶栏只有一行：`.bar` 的子元素是 `.hall`/`#nav`/`.tools`」 |
 | 2 | 去掉 "Local Saved 数字" | `ops.js:103` 删 `$('#connection').textContent = …`；`#connection` 改为 `hidden` 驱动（`reload()` 成功/失败）；`words.connected`/`offline` 删除，新增 `connectionLost`；`data.revision` 移到 `statusScreen()`（`ops.js:192`）的一行 | 断言 `render()` 源码里不含 `data.revision` 的拼接；断离线时 `#connection` 显示 `connectionLost` 双语、在线时 `hidden`；断后台页出现 `revision` |
 | 3 | 计时标签就叫 "shot timer" | `ops.js:4` `words.clock` → `words.shotTimer = ['Shot timer','击球计时']`；`clockHTML()`（`ops.js:101`）与 `#strip` 改用新 key；**同步** `annotator/clock-sync.js:75-77` 的 `LOCAL_TIMER_LIE` 与 `clock-sync.js:390-391` 的语言嗅探；`clockNotice` 保留 | 断言 EN/中两语言下页面只出现 `Shot timer`/`击球计时`；断言 `clockSync.LOCAL_TIMER_LIE` 等于新标签；**保留** `test_ops.js:1065` 的"没有任何标签声称是本机计时"；浏览器验证：共享钟接上后标签变 `Shot clock · shared across devices` |
 | 4 | 每个球员的 house standing 加到常客 | `ops.js:187` `playersScreen()`（加 `resultStats(p.id)` 的场次/胜负/胜率列、无战绩 `—`）；`ops.js:139` `recordsScreen()` 删 `standings` 段；`ops.js:146` `resultStats()` 保持为唯一算法 | 截图 1440/390 常客表；断言 Records 不再出现 `House standings` 标题且 `class="standings"` 表格不在 Records；断言无战绩行出现 `—` 且**不含** `0%`；断言 `#roster-search` 仍走 `nameMatches`（R13） |
 | 5 | Records 只作历史赛事入口，Windows 时间线；Night log 与 Archived events 被取代 | `ops.js:139` `recordsScreen()` 重写为时间线（年/月分组、`<ol class="events">`、展开详情）；`ops.js:111-128` `auditNights()` 改为按 night 过滤的折叠脚注；`ops.js:147` `fmtDate()` 复用；`ops.css` 新增 `.tl-*`（时间线）与月份头样式 | 断言时间线按 `archivedAt` 降序、月份头双语、空态两行且含补录入口；断言展开后含 `results-sheet`/`rename-archived`/`event-hide`/`toggle-hidden` 与审计脚注；断言有签字赛果的项**不出现** `event-delete`；截图 1440 与 390 |
 | 6 | 用 Twitch VOD 回填历史赛事 | 新增 `ops.js` 分段「Backfill」（状态机第 7.1 节、渲染函数、`localStorage` 草稿）；复用 `/api/vods/*`；新增服务端动作 `event_backfill`（`operations.py` 的 `_apply` + 审计 `auditActions`（`ops.js:110`）加词条） | 新增测试：「补录五步的状态机与文案双语」「同一 VOD 第二次回填走 `bfSameVod` 而不是新导入」「未确认的场次不能结算（客户端禁用 + 服务端 400）」「`event_backfill` payload 形状与幂等 409」；Python 侧新增一条 `operations` 单测 |
-| 7 | 没有分层菜单，要有状态 | 删 `phaseStrip()`（`ops.js:33`）、`playStrip()`（`ops.js:46`）、`playTabs`/`playTab`（`ops.js:39`）、`barTabs`/`barMore`/`moreOpen`（`ops.js:40-41`）、`#tabbar-more`（`ops.css:704`）；新增 `comp()/liveComp()/dirtyComp()` 与 `primaryNav()`；`tonightScreen()`（`ops.js:35`）按 2.3 表条件渲染；`syncRoute()`（`ops.js:71`）删阶段后缀 | 断言页面上不存在 `data-phase`、`data-play`、`data-more` 三种按钮；断言 `#/tonight/play` 等旧 hash 原地 `replace` 成 `#/tonight`；断言状态迁移不产生 `push` 历史条目；断言四个状态的卡集合与 2.3 表一致 |
+| 7 | 没有分层菜单，要有状态 | 删 `phaseStrip()`（`ops.js:33`）、`playStrip()`（`ops.js:46`）、`playTabs`/`playTab`（`ops.js:39`）、`barTabs`/`barMore`/`moreOpen`（`ops.js:40-41`）、`#tabbar-more`（`ops.css:686`）；新增 `comp()/liveComp()/dirtyComp()` 与 `primaryNav()`；`tonightScreen()`（`ops.js:35`）按 2.3 表条件渲染；`syncRoute()`（`ops.js:71`）删阶段后缀 | 断言页面上不存在 `data-phase`、`data-play`、`data-more` 三种按钮；断言 `#/tonight/play` 等旧 hash 原地 `replace` 成 `#/tonight`；断言状态迁移不产生 `push` 历史条目；断言四个状态的卡集合与 2.3 表一致 |
 | 8 | Tables 永远可见；competition dashboard 只在赛事进行中；赛事由 Tables 页按钮发起 | `ops.js:35` `tonightScreen()` 主体改为球台网格常驻；`ops.js:107` `floorScreen()` 的内容并入；`ops.js:102` `screens` 表删 `floor`/`matches` 两个键；新增 `.card--start`（`tournament_setup`）与 `.card--wrap`（`wrapScreen()`，源自 `ops.js:70` `closeScreen()`）；`ops.js:193-199` 的事件委托删 `data-phase`/`data-play`/`data-more` 三条分支 | 断言 `comp()==='registration'` 时 `tonightScreen()` 不含记分板/对阵表；`comp()==='active'` 时含；断言 `[开始今晚]` 走 `tournament_setup`；断言球台卡上的 `[派下一场]` 走 `match_schedule`；截图四状态 × 两宽度 |
 
 ---
@@ -2329,7 +2329,7 @@ green while they were live.
 2. **The phone scrolled sideways again: 653 px inside a 390 px window.** Every element from `h3.tl-year`
    down to `ol.tl-vods` measured **624** wide in a 332-wide list, in both languages. The mechanism: round 11
    moved the day rows into the `.events` grid (`#ops-shell .events{display:grid;gap:var(--sp-1)}`,
-   `annotator/ops.css:750`), so `.tl-month` became a grid item whose computed `min-width:auto` let the
+   `annotator/ops.css:732`), so `.tl-month` became a grid item whose computed `min-width:auto` let the
    grid's `auto` track take its min-content — the `.tl-vods` scroller's contents, exactly
    `3×200 + 2×12 = 624`. Round 10 had fixed the same class of bug one level up
    (`#ops-shell .stack.records>*{min-width:0}`, §21.4 "The phone at 390: a regression the measurement
@@ -3206,7 +3206,7 @@ the number that proves it.
 | C17 | A start takes the probe it reports, and the suite asks by name | Nine reads of a private name in `tests/test_live_processing.py` drove the session: the session object, its probe and `_reset_session` | `start(source, detectors=None, *, source_kind=None, probe=None)` at `annotator/live_processing.py:361`, `_reset_session(..., probe=None)` at `:282`, and `status()['probe_alive']` at `:746` | Private reads of `processor._` 11 → 5; `tests/test_live_processing.py` 42 → 43 OK; `tests/test_unified_server.py` 82 OK. The five that remain are deliberate: the capture factory of `4a9654b`, an exact three-wake assertion, and the reset ownership test. Perturbation: `probe=probe)` → `probe=None)` at `:404` fails exactly `test_a_given_probe_is_the_live_edge_the_session_reports` (sha1 `ec820582…` → `cc3bf1b3…` → restored). The card's ground was stale: its nine reads and line numbers belong to the `da765d9` era, and `7297712` had added two, so the two points it proposed cannot reach a count of one |
 | S2 residue | Every writer refuses a name it does not implement | `_do_entrants` and `_do_revival` ended in a fall-through that WAS an action, the class `96248f7` repaired in `_do_match` and `_do_pairing`; the name `entrant_add_not_a_row` was accepted and added a person (entrants 2 → 3) | `elif action == 'entrant_add':` at `annotator/operations.py:851` and `elif action == 'revival_draw':` at `:1008`, each with a final `raise ValueError(f'Unknown … action: {action}')` at `:850` and `:1058` | Legal names unchanged (`git diff -w --numstat` reads `11 1`); `tests/test_operations.py` 73 → 75 OK and `tests/test_store_contract.py` 54 OK (skipped=29). The residue bound tightens with the repair: `tests/test_operations.py:1860` reads `limit = 0 if writer in guards else 1`, so the four multi-row writers that refuse by name must reach no row. Perturbation: the revival refusal replaced by `pass` fails two tests, the new refusal test and the `_do_revival` residue check (sha1 `aada8601…` → `21eabc81…` → restored) |
 
-| C4 | The two dispatch tables become one action registry with two namespaces | `annotator/ops.js:1146-1183` held 95 `if (a === …)` branches with 24 `await action(...)` calls and 84 literal action names, and `annotator/vision-stage.js:1371-1502` held a second table of 63 `case` labels. A name could exist in one table and not the other, and no test could see it | `function newActionRegistry()` at `annotator/vision-stage.js:11` owns `define`, `defineFields`, `module`, `modules`, `names`, `fieldNames`, `has`, `isField`, `row`, `find` and `run`. The stage table is `const stageAct = (() => {` at `:1397` with 63 rows, `function act(action, value, node)` at `:1529` is a three-line forwarder, and `FIELD_ACTIONS` at `:1540` gained `link-target`. The console table is `const opsAct = (() => {` at `annotator/ops.js:1234` with 95 rows, registered by `const registerOps` at `:1226`; `dispatch(name, ctx = {})` at `:1344` and `run(node, event)` at `:1356` are the two ports, `registerOps();` at `:1360` runs at load, and the click handler calls `await opsAct.run(b,e);` at `:1369`. The handle publishes `dispatch`, `actions` and `registry` at `:1549` | `if(a===` 95 → 0; `case '` 63 → 0; `tests/test_ops.js` 201 → 205 pass, 0 fail; `tests/test_board.js` 16 pass, 0 fail; `tests/test_app_timeline.js` 94 passed, 0 failed, with `source-text assertions left: 65` unchanged. Four new tests hold the one registry: every rendered action resolves, every entry has an emitter or is on the named dead list (`UNREACHABLE_ROWS` at `tests/test_ops.js:4909`, eight ops names and no stage name), one registry serves both modules (`registry.find('live-start').length == 2`), and no branch chain is left. In the browser at 1596 by 1045 (raw CDP at `http://127.0.0.1:8130/#/records`): `globalThis.ActionRegistry` holds `modules() = ["vision-stage","ops"]`, 95 ops names, 63 stage names and the legal cross-namespace overlap `["live-start","live-stop","live-detector","chat"]`; the handle from `attach()` holds 174 keys = 6 ports + 168 `SEAM` rows, where HEAD held 171. An in-place row swap is honoured, proved live (`table['archive-reload'] = () => …` then `h.dispatch('archive-reload')` answers `ran the swapped row`) — but a NEW table object is silently undone, because `registerOps()` re-registers `opsAct.table` whenever `shared.module('ops') !== opsAct.table`. `window.OpsConsole.dispatch` stays undefined on purpose: the ports live on the handle. Perturbation: `shared.run('ops', name)` → `shared.run('ops-typo', name)` fails exactly two tests, the new registry test at `tests/test_ops.js:4937` and the round-13 Twitch configurator test at `tests/test_ops.js:4178` (failing at `:4204` with `TypeError: Cannot read properties of undefined (reading 'name')`); sha1 `bd9e72d6…` → `d006e141…` → restored. The eight dead rows are named and not deleted, and the coverage reader reads source literals, so a name built at run time escapes it |
+| C4 | The two dispatch tables become one action registry with two namespaces | `annotator/ops.js:1146-1183` held 95 `if (a === …)` branches with 24 `await action(...)` calls and 84 literal action names, and `annotator/vision-stage.js:1371-1502` held a second table of 63 `case` labels. A name could exist in one table and not the other, and no test could see it | `function newActionRegistry()` at `annotator/vision-stage.js:11` owns `define`, `defineFields`, `module`, `modules`, `names`, `fieldNames`, `has`, `isField`, `row`, `find` and `run`. The stage table is `const stageAct = (() => {` at `:1397` with 63 rows, `function act(action, value, node)` at `:1529` is a three-line forwarder, and `FIELD_ACTIONS` at `:1540` gained `link-target`. The console table is `const opsAct = (() => {` at `annotator/ops.js:1234` with 95 rows, registered by `const registerOps` at `:1226`; `dispatch(name, ctx = {})` at `:1344` and `run(node, event)` at `:1356` are the two ports, `registerOps();` at `:1360` runs at load, and the click handler calls `await opsAct.run(b,e);` at `:1369`. The handle publishes `dispatch`, `actions` and `registry` at `:1549` | `if(a===` 95 → 0; `case '` 63 → 0; `tests/test_ops.js` 201 → 205 pass, 0 fail; `tests/test_board.js` 16 pass, 0 fail; `tests/test_app_timeline.js` 94 passed, 0 failed, with `source-text assertions left: 65` unchanged. Four new tests hold the one registry: every rendered action resolves, every entry has an emitter or is on the named dead list (`UNREACHABLE_ROWS` at `tests/test_ops.js:4928`, eight ops names and no stage name), one registry serves both modules (`registry.find('live-start').length == 2`), and no branch chain is left. In the browser at 1596 by 1045 (raw CDP at `http://127.0.0.1:8130/#/records`): `globalThis.ActionRegistry` holds `modules() = ["vision-stage","ops"]`, 95 ops names, 63 stage names and the legal cross-namespace overlap `["live-start","live-stop","live-detector","chat"]`; the handle from `attach()` holds 174 keys = 6 ports + 168 `SEAM` rows, where HEAD held 171. An in-place row swap is honoured, proved live (`table['archive-reload'] = () => …` then `h.dispatch('archive-reload')` answers `ran the swapped row`) — but a NEW table object is silently undone, because `registerOps()` re-registers `opsAct.table` whenever `shared.module('ops') !== opsAct.table`. `window.OpsConsole.dispatch` stays undefined on purpose: the ports live on the handle. Perturbation: `shared.run('ops', name)` → `shared.run('ops-typo', name)` fails exactly two tests, the new registry test at `tests/test_ops.js:4956` and the round-13 Twitch configurator test at `tests/test_ops.js:4197` (failing at `:4204` with `TypeError: Cannot read properties of undefined (reading 'name')`); sha1 `bd9e72d6…` → `d006e141…` → restored. The eight dead rows are named and not deleted, and the coverage reader reads source literals, so a name built at run time escapes it |
 | C6 | One atomic write with ten implementations | Ten modules each built a temporary file beside the target and called `os.replace`: `src/face_id.py:313-315`, `src/store_export.py:38-44`, `src/person_identity.py:489-492`, `src/store.py:178-185` and `:242-244`, `src/enroll_from_tracklet.py:630-634`, `annotator/shot_clock.py:226-233`, `annotator/vod_import.py:180-187`, `annotator/unified_server.py:223-230`. The docstring at `src/store.py:18` claimed all of them are "the same atomic temp-file + fsync + os.replace", and that claim was false: only some call `fsync`, and the temp names, the cleanup and the encodings differ | `src/atomic_write.py` (120 lines, only `os`, `tempfile`, `pathlib` and `typing`) with `write_atomic(path, write, *, fsync=False, temp_prefix=None, temp_name=None, encoding=None, remove_on_failure=True)` at `:57`, `DEFAULT_PREFIX = "."` at `:40`, and one documented rule per option. Nine call sites moved and each one keeps its own serialization, so `indent`, `sort_keys`, the newline and the encoding are unchanged. The docstring at `src/store.py:18` now names the owner. `annotator/operations.py` was left alone: its own `mkstemp` at `:401` and `replace` at `:408` belong to another worker's file | Five sites are durable (`fsync=True`): `src/store.py:184`, `src/store_export.py:38`, `annotator/shot_clock.py:231`, `annotator/vod_import.py:185`, `annotator/unified_server.py:230`. Four are best-effort on purpose: `src/face_id.py:318`, `src/person_identity.py:493`, `src/store.py:253` (which keeps `temp_name="{stem}.json.tmp"` and `remove_on_failure=False`), `src/enroll_from_tracklet.py:637`. `tests/test_atomic_write.py` 0 → 28 tests OK, and the whole suite then ran `Ran 1468 tests OK (skipped=51)`. My own perturbation found the gap this row closes: with `fsync=True` dropped at `src/store.py:184` the file still ran 26 tests OK, because the owner's fsync behaviour and each site's bytes were tested but nothing said which sites are durable. `class TestCallerDurability` now holds the two role lists, `_drives()` maps nine real write paths by `module.function`, and one test spies on `src.atomic_write.os.fsync` for every site. One run with fsync dropped at `src/store.py:184` and added at `src/person_identity.py:493` failed two subtests by name, and both files were restored from `cp` to sha1 `cd89333e…` and `36b0974c…`. A real-filesystem probe shows the default temp name `.state.json`, and a failing `os.replace` refuses with `disk full`, keeps `{"old": 1}` and removes the temp file |
 
 ### The commits so far
@@ -3955,7 +3955,7 @@ declares, and `annotator/ops.js:1114 function auditLine(e)` falls back to the ac
 The three missing names were `entrant_add_late`, `vod_link` and `vod_unlink`, so the audit feed
 printed `vod_link` where the night said a broadcast was linked. The console sends all three
 itself (`annotator/ops.js:1260 action('vod_link',payload)`, `:1261 action('vod_unlink',…)`,
-`:1410 action('entrant_add_late',body)`), and the round-2 case at `tests/test_ops.js:3238` named
+`:1410 action('entrant_add_late',body)`), and the round-2 case at `tests/test_ops.js:3257` named
 four actions of its own, so the other thirty rows were never checked against the service.
 
 The second copy gets a reader. `GET /api/actions` at `annotator/unified_server.py:2069`
@@ -3991,7 +3991,7 @@ cases), so the run-time skip budget of the checkout does not move.
 Bites. Removing the `vod_link` row answered
 `AssertionError: Tuples differ: (['vod_link'], []) != ([], [])` and failed 2 cases. Removing
 `note_delete`, a row the old case never checked, made the node suite fail with `note_delete is a
-sentence in en, not the backend enum at tests/test_ops.js:3253`. Both files were restored from
+sentence in en, not the backend enum at tests/test_ops.js:3272`. Both files were restored from
 copies and re-hashed. A rewording does not fail, and that is the honest limit of the pair: with
 the Chinese of `vod_link` changed to `关联直播X` the module stayed OK, because the case checks
 that `auditLine` prints the row of the table and not that the row reads well. The vocabulary rule
@@ -4436,7 +4436,7 @@ The browser found a defect that no node suite can see. The first module version 
 level `const api`, and `annotator/clock-sync.js` declares that name too. Classic scripts share one
 global scope, so clock-sync.js died with `Uncaught SyntaxError: Identifier 'api' has already been
 declared` and `window.ClockSync` was undefined. The module is one IIFE now and declares no global
-name, and `tests/test_ops.js:5184` loads every page script in one scope.
+name, and `tests/test_ops.js:5204` loads every page script in one scope.
 
 Measured: `node tests/test_ops.js` 216 pass and 0 fail (211 before), `node
 tests/test_app_timeline.js` 100 passed and 0 failed (99 before). The scan `no page script holds a
@@ -6157,7 +6157,7 @@ files is a file of this round's Strong D.
 `annotator/ops.html:2`: `?v=vision-stage-52` twice (`/ops.css` and `/app.css`), `?v=vision-stage-64`
 once (`/app.js`) and `?v=vision-stage-68` twice (`/vision-stage.js` and `/ops.js`), beside
 `/duration.js?v=duration-1` and `/clock-sync.js?v=clock-sync-3`. `annotator/app.html:8` holds
-`/duration.js?v=duration-1`. The guard `tests/test_ops.js:4676` reads
+`/duration.js?v=duration-1`. The guard `tests/test_ops.js:4695` reads
 `/ops\.css\?v=vision-stage-\d+/`, so it accepts any number and compares nothing.
 
 ### The bites of this round
@@ -6202,7 +6202,7 @@ Round 55 answered 1990 cases and this round answers 2015. The 25 named additions
 | Row | Kind | Ground |
 | --- | --- | --- |
 | The atomic JSON write stands as a nested `def` in five modules | Worth E of this walk, held for round 57 | `src/store.py:193`, `src/enroll_from_tracklet.py:621`, `annotator/shot_clock.py:254`, `annotator/unified_server.py:326` and `annotator/vod_import.py:197`, while `src/atomic_write.py:57 write_atomic` owns the rule |
-| The cache-busting token of one asset stands five times on one line | Worth F of this walk, held for round 57 | `annotator/ops.html:2` holds `?v=vision-stage-52` twice, `-64` once and `-68` twice, and `tests/test_ops.js:4676` accepts any number |
+| The cache-busting token of one asset stands five times on one line | Worth F of this walk, held for round 57 | `annotator/ops.html:2` holds `?v=vision-stage-52` twice, `-64` once and `-68` twice, and `tests/test_ops.js:4695` accepts any number |
 | The two coverage numbers stand as prose and as test literals | found by Strong A of this walk | `src/eval_events.py:391`, `src/event_gates.py:120`, `docs/segment-calibration.md:29`, `docs/calibration-truth.md:195`, and `tests/test_event_gates.py:180`, `:200` and `tests/test_calib_mapping_audit.py:194` |
 | The verdict line of a walk can disagree with its own sections | limit of this round | the round-56 walk answered `3 Strong` and wrote four Strong sections |
 | The colour walk reads a table by its name | limit of this round | a second table under another name passes `tests/test_color_names.py:90 alias_sites()` |
@@ -6360,7 +6360,7 @@ with the Python writer. Two rows of the console seam at `annotator/ops.js:1583` 
 
 Ground: `annotator/ops.html:2` held seven tagged loads with three different `vision-stage` numbers
 (`ops.css` and `app.css` at `-52`, `app.js` at `-64`, `vision-stage.js` and `ops.js` at `-68`), and
-`annotator/app.html:8` held `/duration.js?v=duration-1`. The guard `tests/test_ops.js:4676` read
+`annotator/app.html:8` held `/duration.js?v=duration-1`. The guard `tests/test_ops.js:4695` read
 `/ops\.css\?v=vision-stage-\d+/`, so it accepted any number and compared nothing.
 
 Repair: one new case of `tests/test_ops.js` reads both pages, extracts every `asset?v=token` pair and
@@ -6591,7 +6591,7 @@ the five console fields together.
 the ten javascript sites (with one documented page-less copy in `annotator/clock-sync.js`); the four
 markup sites keep the string and a case compares them with the owner.
 
-`Note 11`: `tests/test_ops.js:3881` guarded `ERROR_MS` with `/ERROR_MS = \d+/`, which accepts any
+`Note 11`: `tests/test_ops.js:3900` guarded `ERROR_MS` with `/ERROR_MS = \d+/`, which accepts any
 number. Repair: the weak case is gone, `annotator/clock-sync.js` exports `ERROR_MS`, and a case drives
 the failure path, reads the number the document states (`ERROR_MS = 6000`), fires the armed timer and
 proves the sentence clears. The bite that changed the number to 5000 still passed the old pattern and
@@ -7290,7 +7290,7 @@ for a normal one). The walk's "cannot fire" was half right, and the record keeps
 | --- | --- | --- | --- |
 | Writer S, Strong 1 | `tests/test_shot_clock.py` | `6c6543c843ca3e01702187351d24681b40b294ce → cc2b7bb62320dd2374d6b4b598762d6659210b94 → 6c6543c843ca3e01702187351d24681b40b294ce` | `AssertionError: {'shipped_modules': ['test_shot_clock.py:435']} != {}` and `'\ndef shipped_modules(' unexpectedly found … : test_shot_clock.py must not declare the scanner a second time` |
 | Lead, Strong 1 | `tests/test_sql_domain_parity.py` | `7655869b9df60153f3ccd6c4260597957e6c06b6 → d22b5f8cfd5c3d3cd131e65272fee4aca58b1d9a → 7655869b9df60153f3ccd6c4260597957e6c06b6` | `'\nSHIPPED = ' unexpectedly found in '…' : test_sql_domain_parity.py must not declare the tree a second time` |
-| Writer T, Worth 4 | `annotator/ops.js` | `fde8318be4ab3d34f5cb4e1022ea5ed0e9cf3381 → f7badad0aaaadbdcbe542bde31886ff4d64057c3 → fde8318be4ab3d34f5cb4e1022ea5ed0e9cf3381` | `the late card and its audit row name the one action with one pair of words`, with `+ 'Entrant added after the draw' - 'Join after the draw'` at `tests/test_ops.js:3467` |
+| Writer T, Worth 4 | `annotator/ops.js` | `fde8318be4ab3d34f5cb4e1022ea5ed0e9cf3381 → f7badad0aaaadbdcbe542bde31886ff4d64057c3 → fde8318be4ab3d34f5cb4e1022ea5ed0e9cf3381` | `the late card and its audit row name the one action with one pair of words`, with `+ 'Entrant added after the draw' - 'Join after the draw'` at `tests/test_ops.js:3486` |
 | Lead, Worth 5 | `src/events_actors.py` | `8f58af126a776c51c419f882ed5ed210f058b5ec → 49a8815ae42f8e7523d843daed3e77f311be03ae → 8f58af126a776c51c419f882ed5ed210f058b5ec` | `FAIL: test_the_events_actors_join_has_one_tolerance`, whose assertion compares the join's answer for a row inside the tolerance |
 
 ### The suites of this round
@@ -10121,7 +10121,7 @@ with the sentence beside the citation.
 
 Ground: `git grep -n "<= *15\|1\[0-5\]" -- tests/ annotator/ db/` answered four lines — the console loop of
 `annotator/label.html:143`, the route gate of `annotator/unified_server.py:2326`, the SQL regex of
-`db/migrations/0002_user_data.sql:178`, and one different rule in `tests/test_ops.js:3201` (ball numbers wrap by
+`db/migrations/0002_user_data.sql:178`, and one different rule in `tests/test_ops.js:3195` (ball numbers wrap by
 ball count at `:3209`). Repair: the console owns `const BALL_LABEL_MIN = 0;` and `const BALL_LABEL_MAX = 15;` at
 `annotator/label.html:50-51` and its loop reads them; the service owns `BALL_LABEL_MIN = 0` and
 `BALL_LABEL_MAX = 15` at `annotator/unified_server.py:148-149` and its gate reads them; the frozen migration
@@ -11509,11 +11509,11 @@ no part of the quoted text and the new number holds it:
 
 1. `src/ops_event_log.py:28` cited `src/events_document.py:37` (`    newer version,`)
    for the sentence that stands at `src/events_document.py:44`.
-2. `annotator/ops.css:905` cited `annotator/ops.css:85` for the 26 pixel button
+2. `annotator/ops.css:887` cited `annotator/ops.css:81` for the 26 pixel button
    width that stands at `annotator/ops.css:96`.
-3. `annotator/ops.css:955` cited `annotator/ops.js:98` while the rows stand at
+3. `annotator/ops.css:937` cited `annotator/ops.js:98` while the rows stand at
    `annotator/ops.js:155` and `:160`.
-4. `annotator/ops.css:989` cited `annotator/ops.js:88` while the button is built at
+4. `annotator/ops.css:971` cited `annotator/ops.js:88` while the button is built at
    `annotator/ops.js:163`.
 5. `src/ops_event_log.py:31` cited `src/store_import.py:234-238` while the insert
    loop stands at `src/store_import.py:248-252`.
@@ -12393,16 +12393,16 @@ each one.  The two halves meet on one served page only: `annotator/ops.html` loa
 ### Strong 2 - the token `vs-chiprow`
 
 `annotator/ops.js:1240` and `annotator/vision-stage.js:655`, `:1071`, `:1076` wrote the token, and
-`annotator/ops.css:353`, `:549`, `:1286` held its rules.  `grep -rn 'vs-chiprow' tests/` answered
+`annotator/ops.css:335`, `:549`, `:1286` held its rules.  `grep -rn 'vs-chiprow' tests/` answered
 nothing.  The one class inventory of the suite reads the `.bm.` rules of `annotator/board.css`
 (`tests/test_board.js:458`).
 
 ### Strong 3 - the four class hooks of the vod chip
 
 `annotator/ops.js:417`, `:418`, `:421` and `:422` wrote `vod-chip`, `vod-chip-name`, `vod-links` and
-`vod-links-label`, and `annotator/ops.css:1203` to `:1207` held their rules.  No test named one of the
+`vod-links-label`, and `annotator/ops.css:1184` to `:1207` held their rules.  No test named one of the
 four tokens, while the sibling action name of the same strings, `vod-unlink`, was read at
-`tests/test_ops.js:4390`, `:4393`, `:4415` and `:4424`.
+`tests/test_ops.js:4409`, `:4393`, `:4415` and `:4424`.
 
 Writer W1 held the three pairs with one new module, `tests/test_js_class_hooks_owner.py` (595 lines,
 7 cases).  The module reads the class tokens from the emitters, the class-target selectors from the two
@@ -12429,13 +12429,13 @@ The module answers `Ran 7 tests in 0.088s` and `OK`.  Writer W1 ran five bites. 
 `failures=2`, naming the rule and the emitter `annotator/app.js:1853`.  (3) `annotator/vision-stage.js:1581`
 `'close-popover'` -> `'close-popover-x'`: `9b133d2b` -> `6f11f672` -> `9b133d2b`, `failures=1`,
 naming the emitter and the key line.  (4) `annotator/ops.js:1240` `vs-chiprow` -> `vs-chiprow-x`:
-`491482e9` -> `5e3add02` -> `491482e9`, `failures=1` with `4 != 3`.  (5) `annotator/ops.css:1204`
+`491482e9` -> `5e3add02` -> `491482e9`, `failures=1` with `4 != 3`.  (5) `annotator/ops.css:1185`
 `.vod-links-label` -> `.vod-links-label-x`: `be3c7339` -> `4578e65f` -> `be3c7339`, `failures=2`,
 naming the emitter `annotator/ops.js:418`.
 
 The Lead ran three more bites, on sites the writer did not bite.  (L1) `annotator/app.css:140`
 `.pop-head` -> `.pop-head-x`: `8d4f793c` -> `b02c9c71` -> `8d4f793c`, `failures=2` with
-`[] != [('pop-head', 'annotator/app.js:1851')]`.  (L2) `annotator/ops.css:1207` `.vod-chip-name` ->
+`[] != [('pop-head', 'annotator/app.js:1851')]`.  (L2) `annotator/ops.css:1188` `.vod-chip-name` ->
 `.vod-chip-name-x`: `be3c7339` -> `53971863` -> `be3c7339`, `failures=2` with
 `[('vod-chip-name', 'annotator/ops.js:421')]` and the scan case `6 != 5`.  (L3) the script name of
 `annotator/ops.html` `/vision-stage.js` -> `/vision-stage-x.js`: `a4ced77c` -> `7045757c` ->
@@ -12511,7 +12511,7 @@ directions are live.  The guard reads the later migration too, because
 
 Worth 1: `vs-loading` stays, because one case reads both halves (`tests/test_ops.js:336`, `:490`,
 `:492` over the emitters `annotator/ops.js:1249`, `annotator/vision-stage.js:1788` and the rule
-`annotator/ops.css:678`).  Worth 2: `pop-grid` is held on the stylesheet side only
+`annotator/ops.css:660`).  Worth 2: `pop-grid` is held on the stylesheet side only
 (`tests/test_app_timeline.js:1016`).  Worth 3: `#review-root` is held by two source contracts
 (`tests/test_app_timeline.js:1008`, `:3068`) while the copy at `annotator/app.css:4` is named by
 nothing.  Note 1: `docs/postgres.md:212` holds the refusal sentence of the script as prose.  Note 2:
@@ -12542,7 +12542,7 @@ repaired the citation to `annotator/vision-stage.js:1581`, the last key of the t
    `annotator/app.css:146` as a popover rule, but that line is the descendant rule `.pop-row button`,
    so the guard counts class-target blocks and pins six rules, not seven.
 2. A reader must state which forms it counts.  The chip family has five own hooks over six rule lines,
-   and the shared class `annotator/ops.css:1206` is not one of them.
+   and the shared class `annotator/ops.css:1187` is not one of them.
 3. A bite that leaves the guard green proves nothing.  The first `vs-chiprow` bite used a substring
    test and stayed green; the repaired class-token test reddened with `4 != 3`.
 4. A full-suite run under sibling writers is volatile.  Two writer runs answered failures that the
@@ -14366,10 +14366,11 @@ The console on `127.0.0.1:8130` answers `/` with 2606 bytes, sha1 `a4ced77cee81`
 4. The writer of the round names every moved pin it sees but does not edit them, because its
    file list is fixed.  The Lead repairs them in the same round.
 
-## Round 121 — the pencil joins the name, and the bar folds to one row where the width allows
+## Round 121 — the pencil joins the name
 
 Two requests arrived about the competition page.  The pencil of the competition name belongs next
-to the name.  The bar buttons belong on one row where the width allows.
+to the name.  The second request was read as the app bar and was wrong.  Round 122 records that
+request and the change it asked for.
 
 ### The pencil stands next to the name
 
@@ -14384,46 +14385,70 @@ and keeps its own row.
 The measured gap between the name and the pencil is 4 px at 1000, 1280, 1440 and 1920.  The head
 keeps its 60 px, also where the parameter line sits below the name.
 
-### The bar folds to one row where the width allows
+### The second request was read wrong
 
-The header held two rows at every width: the destinations with the tools, then the clock.  The
-second row was mostly empty on a wide screen, because the clock's own contents take near 400 px.
-
-`#ops-shell .bar` is `flex-direction:row;flex-wrap:wrap` now, and `#ops-shell .clockbar` carries
-`flex:1 0 auto`.  The clock shares the first row while the row is wide enough.  It wraps to its own
-row when the row is narrow.
-
-The measured header height is 52 px at 1440 and at 1920 (one row), and 98 px at 1280 and 106 px at
-1000 (two rows).  The clock sits at y=7 on a wide screen and at y=56 or y=58 when it wraps.  The
-fold sits between 1280 and 1440.
-
-The phone layout does not change.  The ≤750 px rule keeps `position:fixed` on the clockbar, so the
-clock stays a bottom bar with its own row.
-
-### The shot-timer progress line
-
-The progress line is a child of the clock row and was `position:absolute` against it.  It measured
-311 px, the clock's own width.  `#ops-shell .bar` is `position:relative` now, so the line spans the
-whole header: 1185 px at 1280 and 1496 px at 1920.
+The second request was read as a fold of the app bar.  The bar folded to one row at 1440 and wider.
+The owner corrected the reading (m04000): the request was about the buttons of the competition
+page, not about the shell.  The fold was taken back in round 122.
 
 ### The guard
 
 `tests/test_ops.js` names every rule of this round by its text: the head's `auto 1fr`, the pencil's
-column and `justify-self`, the parameter line's span, the bar's wrap and its direction, and the
-clock's `flex:1 0 auto`.  The bar test refuses `flex-direction:column` on the bar and
-`position:relative` on the clockbar, so the two-row rule cannot come back.
-
-Node: 233 tests pass and 0 fail, the bar test and the new round-121 test included; the board suite
-23 pass and 0 fail; the timeline suite holds its 75 source-text assertions.  The four python
-modules that read `annotator/ops.css` pass: `test_stylesheet_owner` 7 tests,
-`test_palette_contrast` 8, `test_public_board` 34, `test_font_coverage_owner` 11.
+column and `justify-self`, and the parameter line's span.
 
 ### Lessons
 
 1. A flex row does not fold a full-width line.  `.heading` already carried `flex-wrap:wrap`, but
    the parameter line shared the title's line, and one line never folds.  A grid with one explicit
    column per item folds the line.
-2. The two-row bar was a decision of round 8.  That rule held the clock's own row at every width.
-   A width rule that replaces it must keep the phone layout, which fixes the clock to the bottom.
-3. A child that anchors to the clock row also moves with that row.  The progress line needed the
-   bar itself to become the anchor.
+2. A request that names a page is not a request about the shell.  The app bar is the shell, and its
+   two rows were a decision of round 8.  The owner's own word must come before such a change.
+
+## Round 122 — every button of the competition page shares one row
+
+The owner corrected the second request (m04000): "make all the buttons in one line on the
+competition page under the competition name after it has started."
+
+### One row for the card's own buttons
+
+The event card held two rows under the name.  The late-join door had a row of its own
+(`<div class="row event-late">`), and the night's doors (`results-sheet`, `new-event`,
+`event-delete`) had the `.end-night` row under it.  After the start the card read late-open at
+y=204 and the end row at y=244.
+
+`annotator/ops.js` renders the late-join door as one button of the `.end-night` row now.
+`closeCard()` calls `lateCard()` inside that row.  The order is the order the operator reads: the
+late-join door, the results sheet when the night is complete, the archive door, the delete door.
+The row wraps, so a narrow screen keeps every button on the page.
+
+The rule `#ops-shell .event-late` left the stylesheet with the element it named.
+
+### The measured result
+
+| width | the row | late-open | new-event | event-delete | the card |
+|---|---|---|---|---|---|
+| 1280 | 48,200,1185,40 | 48,200 | 205,200 | 369,200 | 31,123,1219,134 |
+| 1920 | 229,200,1462,40 | 229,200 | 386,200 | 551,200 | 212,123,1496,134 |
+| 390 | 29,150,332,88 | 29,150 | 186,150 | 29,198 | 12,73,366,182 |
+
+Every button shares y=200 at 1280 and at 1920.  The card is 134 px tall at both widths; it was
+178 px in the two-row state.  At 390 px the row folds to two lines and the document keeps its
+390 px width, so nothing overflows.
+
+### The bar is back to two rows
+
+The round-121 fold of the app bar was taken back.  `#ops-shell .bar` is
+`flex-wrap:nowrap;flex-direction:column` again, and `#ops-shell .clockbar` keeps
+`position:relative` and `flex:none`.  The header measures 98 px at 1280 and at 1920, the clock row
+sits at y=56, and the progress line rides the clock row: 31,92,1219,2 at 1280.
+
+### The guard
+
+`tests/test_ops.js` holds one new case: the event card of a started night carries `late-open`,
+`new-event` and `event-delete` in one `class="row"`, `annotator/ops.js` renders the late-join door
+as a bare button, and no `.event-late` rule stays in the stylesheet.
+
+Node: 234 tests pass and 0 fail in `tests/test_ops.js`; the board suite holds 23 pass and 0 fail, and
+the timeline suite reports 114 passed, 0 failed with its 75 source-text assertions.  The four python
+modules that read `annotator/ops.css` pass: `test_stylesheet_owner` 7 tests, `test_palette_contrast`
+8, `test_public_board` 34, `test_font_coverage_owner` 11.

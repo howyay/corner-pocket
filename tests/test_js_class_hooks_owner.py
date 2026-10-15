@@ -15,12 +15,12 @@ starts at ``annotator/vision-stage.js:1468`` and ends with the key at
 
 **Finding B, `vs-chiprow`.**  Four emitter sites write the token:
 ``annotator/ops.js:1240`` and ``annotator/vision-stage.js:655``, ``:1074``,
-``:1079``.  Three rules of `annotator/ops.css` hold it: ``annotator/ops.css:353``,
+``:1079``.  Three rules of `annotator/ops.css` hold it: ``annotator/ops.css:335``,
 ``:549``, ``:1286``.
 
 **Finding C, the VOD chip markup.**  Four lines of `annotator/ops.js` build the
 chip: ``:417``, ``:418``, ``:421``, ``:422``.  Each class token of that markup has
-a rule in `annotator/ops.css`, at ``annotator/ops.css:1203-1207``.
+a rule in `annotator/ops.css`, at ``annotator/ops.css:1184-1188``.
 
 The tree held no case for these pairs.  The closest case reads another pair:
 ``tests/test_app_timeline.js:1016`` reads the stylesheet text for ``.stage-popover``

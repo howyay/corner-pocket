@@ -74,11 +74,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
    rows around - the destinations with the tools come first, the clock's own row sits under
    them - because the bar is the instrument and reads under the doors it belongs to, not over
    them. This replaces the one-bar rule that made the slot the nav's first child ("the tab row
-   takes the room the brand block left").
-   Round 121 (owner): "put all the buttons at the top that page in one line where the width
-   allows." The two rows keep their own home and their order; the bar that holds them folds
-   them onto one line whenever the line can hold all three, and leaves the clock its own
-   full-width line when it cannot. See the .bar rule below for the width that decides it. */
+   takes the room the brand block left"). */
 #ops-shell .barrow{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);min-width:0}
 /* On the timer's own tab the big face does the work, so the strip leaves the screen instead
    of sitting under the doors repeating the same digits. The host stays in the document (the
@@ -88,14 +84,11 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .barrow > nav{flex:0 1 auto;min-width:0;padding:0}
 /* The always-available element (owner §13.1) has owned a row of the header since round 7
    (owner item 2) and has sat under the destinations since round 8 (owner item 1): one flex
-   row, never wrapping inside itself, the clock large, the elapsed bar riding the header's
-   bottom edge. The group's aria-label names it, so the old .kicker second line is not here to
-   push the digits off the row's centre line.
-   Round 121 (owner, m03414): the row joins the destinations' line wherever that line can hold
-   all three, and keeps a line of its own where it cannot - the .bar rule below folds it, this
-   rule only lets it take the room that is left. Its own box is as wide as its controls either
-   way, so the elapsed bar is anchored to .bar and not to this row (see the progress rule). */
-#ops-shell .clockbar{display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-2);flex:1 0 auto;padding-bottom:var(--sp-1h)}
+   row, never wrapping, the clock large, the elapsed bar riding the header's bottom edge -
+   which is the header's own width, so the room can read the clock from across it. The group's
+   aria-label names it, so the old .kicker second line is not here to push the digits off the
+   row's centre line. */
+#ops-shell .clockbar{position:relative;display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-2);flex:none;padding-bottom:var(--sp-1h)}
 #ops-shell .clockbar .clock{font-size:clamp(30px,3.4vw,48px);line-height:1}
 #ops-shell .clockbar button{min-height:36px;padding:0 var(--sp-2);font-size:var(--fs-sm);white-space:nowrap}
 #ops-shell .clockbar button[data-action=clock-reset]{color:var(--ink-dim)}
@@ -104,10 +97,6 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell .clockbar .presets button.active{background:var(--brass);color:var(--brass-fg)}
 /* A command that failed is a fact; connecting, live, polling and offline are not copy. */
 #ops-shell .sync-error{color:var(--red);font:var(--fs-sm) var(--mono);letter-spacing:.06em}
-/* The elapsed bar rides the header's bottom edge in both layouts: it is anchored to #ops-shell
-   .bar, the positioned box (round 121), and not to the timer row. The timer row is only as wide
-   as its own controls when it wraps - 321 px of 1280 - and a bar that short would read as a
-   second, smaller clock instead of the night's progress. */
 #ops-shell .clockbar .progress{position:absolute;left:0;right:0;bottom:0;height:2px;margin:0;border:0}
 /* Running text stops at the measure; structure does not. Everything the review engine
    draws inside the frame is excluded (the app page's own paragraphs are positioned
@@ -116,14 +105,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-body)/1.5
 #ops-shell main p:not(#review-root *){max-width:var(--measure)}
 #ops-shell .bar,#ops-shell .tools,#ops-shell nav,#ops-shell .row,#ops-shell .heading,#ops-shell .actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 #ops-shell .bar,#ops-shell .heading{justify-content:space-between}
-/* Round 121 (owner, m03414): "put all the buttons at the top that page in one line where the
-   width allows." The fold is content, not a breakpoint, so it holds in EN and in 中文 and at
-   every zoom: the destinations and the tools measure 1019 px at 1920 and the timer row about
-   400 px, so the three share the one 1560 px line at 1920 (52 px of header) and the timer wraps
-   to its own line from about 1440 down (98 px at 1280). Nothing is hidden above the fold, so no
-   control is lost at either width. The bar is also the positioned box the elapsed bar rides, so
-   that bar keeps the header's own width after the fold (see the progress rule above). */
-#ops-shell .bar{position:relative;flex-wrap:wrap;flex-direction:row;align-items:center;gap:var(--sp-2)}
+#ops-shell .bar{flex-wrap:nowrap;flex-direction:column;align-items:stretch;gap:var(--sp-2)}
 #ops-shell .barrow > .tools{flex:0 1 auto;min-width:0;flex-wrap:wrap}
 #ops-shell small,#ops-shell .kicker,#ops-shell .badge,#ops-shell label>span,#ops-shell th{font:var(--fs-sm) var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 #ops-shell small{display:block;margin-top:var(--sp-1)}
@@ -1173,7 +1155,6 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell[data-vision=live] .vs-strip .vs-track{display:none}
 #ops-shell .vs-live-hidden{display:none}
 #ops-shell .live-screen{display:grid;gap:var(--sp-2);align-content:start}
-#ops-shell .event-late{margin:var(--sp-1) 0 0}
 #ops-shell .live-status{margin:0 0 var(--sp-2);color:var(--ink);font-size:clamp(22px,3vw,32px);line-height:1.15;font-weight:600}
 #ops-shell .live-actions,#ops-shell .live-detectors{margin-top:var(--sp-2);flex-wrap:wrap}
 #ops-shell .live-note{margin:var(--sp-1h) 0 0;font-size:var(--fs-sm)}

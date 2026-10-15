@@ -846,7 +846,7 @@ function eventCard(){
   const head=eventNameEditing
     ? `<form id="event-name-form" class="row event-rename-form"><input id="event-name" name="name" value="${esc(T.name||'')}" maxlength="120" aria-label="${esc(t('renameEvent'))}" autofocus><button class="primary" type="submit">${esc(t('save'))}</button><button type="button" data-action="event-rename-cancel">${esc(t('cancelEdit'))}</button></form>`
     : `<h3 class="event-title">${esc(name)}</h3><button type="button" class="link event-rename" data-action="event-rename" aria-label="${esc(t('renameEvent'))}" title="${esc(t('renameEvent'))}">✎</button>`;
-  return `<article class="card card--event"><div class="heading event-head">${head}<p class="muted event-params" data-vs-role="event-params">${esc(eventParams(T))}</p></div>${lateCard()}${closeCard(drawn)}</article>`}
+  return `<article class="card card--event"><div class="heading event-head">${head}<p class="muted event-params" data-vs-role="event-params">${esc(eventParams(T))}</p></div>${closeCard(drawn)}</article>`}
 function panel(key,count,body){return `<details class="panel"><summary><h3>${esc(t(key))}</h3>${count?`<span class="muted">${count}</span>`:''}</summary>${body}</details>`}
 // Round 13, owner items 3, 6 and 9. One body for every state the night can be in: the event card,
 // the draw, the entrants. The scoreboard left this tab (item 6) - it is the timer page's board, and
@@ -876,7 +876,7 @@ function clockNavButton(){const cur=!bf&&tab==='clock',face=ballHTML(1).replace(
 function playScreen(){return `${eventCard()}${bracketScreen()}${revivalCard()}${entrantsCard()}`}
 function matchId(form){const named=form?.elements?.id?.value||form?.querySelector?.('[name=id]')?.value;const id=(typeof named==='string'?named:'')||(typeof form?.id==='string'?form.id:'');if(!id)return null;return matches().find(m=>m.id===id)||{id}}
 
-function closeCard(drawn){const T=tournament(),entrantN=(T.entrants||[]).length,signed=hasSigned(T),started=!!T.id,canDelete=started&&entrantN>0&&!signed,why=!started?t('closeNoEvent'):signed?t('closeSigned'):entrantN?'':t('closeNoEntrants');return `<div class="end-night"><div class="row">${drawn&&started&&tonightState()==='complete'?btn(t('resultsSheet'),'results-sheet',`data-id="${esc(T.id)}"`):''}${btn(t('new'),'new-event',started?'':'disabled')}${btn(t('deleteEvent'),'event-delete',`data-id="${esc(T.id)}"${canDelete?'':' disabled'}`,'danger')}</div>${why?`<p class="note close-why" role="status">${esc(why)}</p>`:''}</div>`}
+function closeCard(drawn){const T=tournament(),entrantN=(T.entrants||[]).length,signed=hasSigned(T),started=!!T.id,canDelete=started&&entrantN>0&&!signed,why=!started?t('closeNoEvent'):signed?t('closeSigned'):entrantN?'':t('closeNoEntrants');return `<div class="end-night"><div class="row">${lateCard()}${drawn&&started&&tonightState()==='complete'?btn(t('resultsSheet'),'results-sheet',`data-id="${esc(T.id)}"`):''}${btn(t('new'),'new-event',started?'':'disabled')}${btn(t('deleteEvent'),'event-delete',`data-id="${esc(T.id)}"${canDelete?'':' disabled'}`,'danger')}</div>${why?`<p class="note close-why" role="status">${esc(why)}</p>`:''}</div>`}
 function syncRoute(push){const hash=reviewId?`#/records/review/${encodeURIComponent(reviewId)}`:(tab==='tonight'?'#/tonight':`#/${routePaths[tab]}`);if(location.hash!==hash)history[push?'pushState':'replaceState'](null,'',hash)}
 // Order 5: a refused navigation used to be silent, which reads as a broken tab bar. Say why.
 function whyCannotNavigate(){
@@ -1176,7 +1176,7 @@ function lateCard(){const T=tournament();if(!T||T.status!=='active')return '';
   // owner item 1: the match-up and the teammate are decided in a dialog, and the server refuses a
   // payload without them. Round 31, owner item 2: the control is a row of the event settings card at
   // the top of the tab, so the tab itself is the event, the draw, the second chance and the entrants.
-  return `<div class="row event-late"><button data-action="late-open" title="${esc(t('lateHint'))}">${esc(t('lateOpen'))}</button></div>`}
+  return `<button data-action="late-open" title="${esc(t('lateHint'))}">${esc(t('lateOpen'))}</button>`}
 // Round 29, owner item 1: the dialog. Each slot offers the three answers the owner named - nobody, a
 // second chance for a first-round loser, or a new person registered here - and the radios are
 // required, so the browser refuses a submit that leaves a decision open.
