@@ -1062,9 +1062,9 @@ function paintOverlay() {
     if (geometry) { layers.push(geometry.markup); auto.events++; }
   }
   if (ov.anchors && state.anchors.loaded && state.dataset === BUILT_IN_DATASET && !liveFrame) {
-    const [ax, ay] = state.anchors.pts[0] || [0, 0];
+    // Round 123, owner (m04238): the anchor marks carry no source tag.
     layers.push(state.anchors.pts.map(([x, y], i) => `<g class="u-anchor${state.sel.kind === 'anchor' && state.anchors.index === i ? ' selected' : ''}" data-anchor="${i}"><circle cx="${x}" cy="${y}" r="12"></circle><text x="${x + 18}" y="${y - 16}">${i + 1}</text></g>`).join(''));
-    layers.push(sourceTag(ax + 16, Math.max(2, ay - 32), 'manual'));
+    // The number of each mark is its label, so the stage adds no second name.
     auto.anchors = state.anchors.pts.length;
   }
   // The editable layer is the operator's only once a correction exists or they

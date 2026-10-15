@@ -14452,3 +14452,38 @@ Node: 234 tests pass and 0 fail in `tests/test_ops.js`; the board suite holds 23
 the timeline suite reports 114 passed, 0 failed with its 75 source-text assertions.  The four python
 modules that read `annotator/ops.css` pass: `test_stylesheet_owner` 7 tests, `test_palette_contrast`
 8, `test_public_board` 34, `test_font_coverage_owner` 11.
+
+## Round 123 — the anchor marks carry no source tag
+
+The owner named what they saw (m04238): "A. and also dont even label C."  A is the source tag
+of a drawn box, and C is the label of the anchors layer.  Both name one line of
+`annotator/app.js`.
+
+### The one tag without evidence
+
+The anchors layer pushed one source tag for the whole layer, and the kind was the literal
+`manual`:
+
+    layers.push(sourceTag(ax + 16, Math.max(2, ay - 32), 'manual'));
+
+So the stage printed 人工 (YOURS) beside the six numbered marks on every frame of the
+built-in dataset.  The operator had drawn no box and saved no correction, and the tag still
+called the geometry theirs.  Every other tag of the stage reads a real origin: the box tag
+reads `boxTagKind(box)`, and `boxOrigin()` gives an absent origin the model's answer.  The
+manual layer comes from a saved correction only, so an untouched frame cannot print 人工.
+
+### The change
+
+The tag line is a comment now.  The layer draws its numbered circles and no source tag.  The
+number of each mark is its label.  Two lines changed inside the gate and no line left the
+file, so the pinned readers of `tests/test_built_in_dataset_page_owner.py` (:64, :67, :487,
+:552, :1064, :1345) keep their lines and the citation sweep stays clean.
+
+### The guard
+
+The layers helper of the stage case in `tests/test_app_timeline.js` counts
+`data-src="manual"` now.  Frame 0 of `vod30` with the anchors loaded reads
+`{pockets:6, calib:7, anchors:6, cloth:1, manual:0}`, and the four live states read `manual:0`.
+
+Node: `tests/test_ops.js` 234 pass and 0 fail; `tests/test_board.js` 23 pass and 0 fail;
+`tests/test_app_timeline.js` 114 passed, 0 failed with its 75 source-text assertions.

@@ -3221,12 +3221,12 @@ test('the saved-anchor pockets and anchor marks never land on a live picture, wh
   T.scene({"cloth.reference": {points:[[454.9,307.8],[799.5,319.4],[1023.8,573.1],[449.6,563.5],[448.4,402.9],[883.9,413.3]], source:'saved anchors', width:1280, height:720}});
   T.scene({"anchors.loaded": true, "anchors.pts": [[100,100],[200,100],[200,200],[100,200],[150,100],[150,200]]});
   const layers = () => ({pockets:(svg.innerHTML.match(/class="u-pocket"/g) || []).length, calib:(svg.innerHTML.match(/data-src="calib"/g) || []).length,
-                         anchors:(svg.innerHTML.match(/class="u-anchor/g) || []).length, cloth:(svg.innerHTML.match(/class="u-cloth"/g) || []).length});
-  // Frame 0 on the stage: its calibration pockets and anchor marks are its own.
+                         anchors:(svg.innerHTML.match(/class="u-anchor/g) || []).length, cloth:(svg.innerHTML.match(/class="u-cloth"/g) || []).length, manual:(svg.innerHTML.match(/data-src="manual"/g) || []).length});
+  // Frame 0: its pockets and marks are its own; Round 123 (m04238) leaves every anchor mark untagged.
   T.scene({source: {kind:'vod', label:'vod30', channel:null}, shotUrl: 'blob:frame0'}); img.src = 'blob:frame0';
   T.frame();
   const frameHtml = svg.innerHTML;
-  same(layers(), {pockets:6, calib:7, anchors:6, cloth:1});
+  same(layers(), {pockets:6, calib:7, anchors:6, cloth:1, manual:0});
   // Vision mounts while a session runs: the first live frame lands before the stage
   // has its picture element; the stage built after it shows that frame, not frame 0.
   const noStage = {lang:'en', dataset:{}, querySelector: () => null, querySelectorAll: () => []};
@@ -3239,13 +3239,13 @@ test('the saved-anchor pockets and anchor marks never land on a live picture, wh
   // The live feed runs; its detector measured a quad and it was refused (as on 09-26).
   T.scene({"live.state": 'running'});
   review.ingestLiveFrame('blob:live-1', {seq:1, detections:{boxes:[{label:'person', bbox:[500,200,600,500]}], table_polygon:[[0,0],[10,0],[10,10],[0,10]]}}, {label:'● live · twitch examplechannel', channel:'examplechannel'});
-  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'the live frame: no saved-anchor pockets, marks or quad');
+  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0, manual:0}, 'the live frame: no saved-anchor pockets, marks or quad');
   assert.strictEqual(T.drawn().pockets, 0); assert.strictEqual(T.drawn().anchors, 0);
   // (1) The picture is live but the source flag says 'vod' (mount order; a dataset
   // chip clicked while the feed runs; Stop after a live error): still nothing.
   T.scene({source: {kind:'vod', label:'vod30', channel:null}});
   T.frame();
-  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'a live picture under a vod source flag gets no dataset layers');
+  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0, manual:0}, 'a live picture under a vod source flag gets no dataset layers');
   assert.strictEqual(T.drawn().pockets, 0, 'and the facts line counts none');
   assert.strictEqual(T.drawn().anchors, 0);
   T.scene({source: {kind:'live', label:'● live · twitch examplechannel', channel:'examplechannel'}});
@@ -3258,11 +3258,11 @@ test('the saved-anchor pockets and anchor marks never land on a live picture, wh
   review.setAppearance('en', 'dark');
   T.scene({vmeta: vmeta});
   assert.ok(T.stageHTML().includes('src="blob:live-1"'), 'and so does a rebuilt stage');
-  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0});
+  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0, manual:0});
   // (2) The feed dies (state error, the last live picture stays), then the operator stops.
   review.applyLiveStatus({state:'error', error:'Live stream ended or read timed out; restart to reconnect', frames_skipped:0});
   T.frame();
-  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0}, 'a dead feed keeps its last live picture without dataset layers');
+  same(layers(), {pockets:0, calib:0, anchors:0, cloth:0, manual:0}, 'a dead feed keeps its last live picture without dataset layers');
   review.applyLiveStatus({state:'stopped', frames_skipped:0});
   assert.strictEqual(T.source().kind, 'vod', 'a stop after an error hands the stage back as well');
   assert.strictEqual(img.src, 'blob:frame0', 'with the dataset picture on it');
