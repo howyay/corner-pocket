@@ -27,7 +27,7 @@ The module imports no module of this repository, so every caller can import it w
 second import path.
 """
 from __future__ import annotations
-__all__ = ["write_reply", "JSON_CTYPE"]
+__all__ = ["write_reply", "JSON_CTYPE", "JPEG_CTYPE"]
 # The default content type of a JSON reply has one home: this name.  Every reply
 # writer of the repository reads it, so one change lands in one file.
 JSON_CTYPE = "application/json"
@@ -44,3 +44,6 @@ def write_reply(handler, code, body, ctype=JSON_CTYPE) -> None:
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
+# The content type of a JPEG reply has one home here too: this module owns the JSON
+# type above and states the whole reply-content-type fact in its docstring.
+JPEG_CTYPE = "image/jpeg"

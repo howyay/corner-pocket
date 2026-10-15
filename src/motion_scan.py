@@ -60,7 +60,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
+from src.store_files import FRAME_RESULTS  # noqa: E402
 from src.ball_scale import (DIAMETER_NATIVE_PX, DIAMETER_P10_NATIVE_PX,  # noqa: E402
                             DIAMETER_P90_NATIVE_PX, NATIVE_FRAME, RADIUS_NATIVE_PX,
                             WORKING_FRAME)
@@ -1539,7 +1539,7 @@ def cached_person_evidence(root=None, onsets=()) -> dict:
     too sparse to classify onsets, quoted where a time matches.
     """
     root = Path(root or ROOT)
-    base = root / "out" / STATIC_OUT[BUILT_IN_DATASET] / "frame_results"
+    base = root / "out" / STATIC_OUT[BUILT_IN_DATASET] / FRAME_RESULTS
     rows = []
     if base.exists():
         for entry in sorted(base.iterdir()):

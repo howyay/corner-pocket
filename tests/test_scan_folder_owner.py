@@ -91,7 +91,7 @@ READERS = {
         (1051, 'tv = root / "out" / %s[dataset] / "timing_verify.json"' % MAP_NAME),
         (1262, 'path = Path(root) / "out" / %s[%s] / "timing_verify.json"'
          % (MAP_NAME, KEY_NAME)),
-        (1542, 'base = root / "out" / %s[%s] / "frame_results"'
+        (1542, 'base = root / "out" / %s[%s] / FRAME_RESULTS'
          % (MAP_NAME, KEY_NAME)),
         (1890, 'names = ([%s[dataset]] if dataset == %s else []) + [f"scan_{dataset}"]'
          % (MAP_NAME, KEY_NAME)),

@@ -14260,3 +14260,108 @@ of the citations answers 11 cases `OK`.
 2. One literal string can be several facts at once.  `application/json` names a reply default, a client
    request header, an explicit positional argument, and page text.  Only the first one has one home,
    and the guard must state why the other three are not offenders.
+
+## Round 119
+
+Base commit: `ecd1f04` "Give the reply content type one home".
+
+### The walk
+
+The read-only walk of round 118 answered `Strong candidate present` with
+`Strong 2 / Worth 0 / Note 9`.  It stands in `/tmp/dshsess/walk_round118.md` (~170 lines),
+taken at `ecd1f04` with an empty `git status --porcelain`; it changed no repository file and
+ran no suite.  The Lead measured every ground of both rows again with `git grep -nF`, and the
+numbers matched the walk.
+
+### The rows this round ships
+
+Row 1: the content type of a JPEG reply, `image/jpeg`.
+
+| where | site |
+| --- | --- |
+| home | `src/reply_body.py:49` `JPEG_CTYPE = "image/jpeg"` (comments at `:47-48`) |
+| writers | `annotator/server.py:114`, `src/pid_anchor_ui.py:160`, `annotator/unified_server.py:3008`, `:3021`, `:3042`, `:3044` |
+| binding lines | `annotator/server.py:27`, `src/pid_anchor_ui.py:35`, `annotator/unified_server.py:218` |
+| reader | `tests/test_unified_server.py:627` |
+| guard | `tests/test_jpeg_ctype_owner.py`, 14 cases |
+
+Three sites of the same literal are other facts and stay: the two data URLs
+(`src/enroll_from_tracklet.py:812`, `src/pid_seed_ui.py:87`) and the upstream picture type of
+`annotator/twitch_vod_source.py:219`, which `tests/test_vod_import.py:637` reads.
+
+Row 2: the per-frame evidence folder, `frame_results`.
+
+| where | site |
+| --- | --- |
+| home | `src/store_files.py:290` `FRAME_RESULTS = "frame_results"` (comments at `:288-289`) |
+| sites | `src/store_files.py:165`, `:191`, `annotator/unified_server.py:1969`, `src/store_check.py:63`, `src/store_import.py:715`, `src/motion_scan.py:1542` |
+| binding lines | `annotator/unified_server.py:72`, `src/store_check.py:29`, `src/store_import.py:49`, and the new edge `src/motion_scan.py:63` |
+| readers | `tests/test_store_files.py:375-376`, `:402` |
+| guard | `tests/test_frame_results_owner.py`, 12 cases |
+
+The row keeps three forms alive: the joined path, the textual `"/" + FRAME_RESULTS + "/"`
+partition of `src/store_check.py:63`, and the SQL `LIKE` shape of `src/store_import.py:715`,
+so a guard that reads whole string constants alone would lose two of the six sites.
+
+### Bites
+
+Each row has two bites.  The writer bit the home line; the Lead bit a site the writer did not
+touch.
+
+| row | who | site bit | what the guard answered | sha1 |
+| --- | --- | --- | --- | --- |
+| 1 | writer | `src/reply_body.py:49` -> `"image/jpegx"` | `src/reply_body.py:49 no longer holds the home; it reads 'JPEG_CTYPE = "image/jpegx"'`, 3 cases red | `7e8df3d5b25d` restored |
+| 1 | Lead | `src/pid_anchor_ui.py:160` -> `"image/jpeg"` | `src/pid_anchor_ui.py:160 no longer reads the home` and `'image/jpeg' spells the content type; read src.reply_body.JPEG_CTYPE` | `98bc25ceb18b` restored |
+| 2 | writer | `src/store_files.py:290` -> `"frame_results_x"` | `src/store_files.py:290 no longer holds the home; it reads 'FRAME_RESULTS = "frame_results_x"'`, 2 cases red | `4c03915d794c` restored |
+| 2 | Lead | `src/store_check.py:63` -> `"/frame_results/"` | `src/store_check.py:63 no longer reads the home` and `'frame_results' spells the frame folder name; read src.store_files.FRAME_RESULTS` | `ecb80bb6a1e7` restored |
+
+Every bite names the line and the home that line must read.  Every restore answers the same
+sha1 before and after, and each guard answers `OK` again.
+
+### The drift this round caused
+
+The round moved two guards of earlier rounds.  The Lead repaired both pins by the same-text
+rule:
+
+- `tests/test_json_ctype_owner.py`: `LINE_COUNTS[HOME_FILE]` 46 -> 49 (the two comment lines
+  and the home of row 1), and the three import texts of `BINDINGS` now read `JPEG_CTYPE` as
+  well.  14 cases `OK`.
+- `tests/test_scan_folder_owner.py:94`: the pin of `src/motion_scan.py:1542` named the old text
+  `... / "frame_results"`; it now names `... / FRAME_RESULTS`.  13 cases `OK`.
+
+No other guard moved: the writer appended both homes and traded comment or blank lines, so no
+line of any other file moved.
+
+### Citations
+
+The sweep answered `payable citations: 0` and `citations replaced: 0 in 0 files (stamp
+written)` at base `ecd1f04`: every edit kept its line count, so no citation moved.
+`tests/test_citation_lines` answers 11 cases `OK`.
+
+### Suites
+
+The node suite answers `tests/test_ops.js` 232 pass / 0 fail, `tests/test_board.js` 23 pass /
+0 fail, `tests/test_app_timeline.js` 114 passed / 0 failed, and 75 source-text assertions left.
+
+The python suite answers `Ran 3251 tests in 1088.603s` and `OK (skipped=53)`.  The count of tests
+grew by 26 from round 117, because the two new guards carry 26 cases together.
+
+### The live check
+
+The console on `127.0.0.1:8130` answers `/` with 2606 bytes, sha1 `a4ced77cee81`, equal to
+`annotator/ops.html` on disk, and `/app.js` with 170660 bytes, sha1 `0d963bf895af`, equal to
+`annotator/app.js` on disk.  A fresh instance of `annotator/server.py` on a free port answers
+`/api/events` 200 with 12696 bytes and `/api/crops` 200 with 9885 bytes.  The script stands in
+`/tmp/dshsess/r113_livecheck.py`.
+
+### Lessons
+
+1. A home appended after the last line of its module costs no line number.  Every citation of
+   that module holds, and the sweep answers 0 payable.
+2. One fact can stand in a joined path, in a textual partition and in a SQL `LIKE` shape at
+   once.  A guard that reads whole string constants alone finds one of the three; the walk of
+   the guard must read every form.
+3. A guard of an earlier round pins the TEXT of a line.  Extending that line's import moves the
+   pin too, so a round that extends an import line must measure the guards that pin it.
+4. The writer of the round names every moved pin it sees but does not edit them, because its
+   file list is fixed.  The Lead repairs them in the same round.

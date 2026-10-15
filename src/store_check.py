@@ -26,8 +26,8 @@ from src import db
 # src.store_files.document_paths owns them, and document_name answers them.  The
 # reader below takes the three names from that home, so it cannot read a stored path
 # that the writer of the same file would not have written.
-from src.store_files import (SEED_DOCUMENT, STATE_DOCUMENT, dataset_of_dir, document_name,
-                             documents, has_documents_table)
+from src.store_files import (FRAME_RESULTS, SEED_DOCUMENT, STATE_DOCUMENT, dataset_of_dir,
+                             document_name, documents, has_documents_table)
 # The anchor file name of a dataset has one owner, src/calib_segments.py.  The
 # document reader below takes the head and the suffix of that name from the owner,
 # so the dataset it reads out of a stored path cannot drift from the name check.
@@ -60,7 +60,7 @@ def projections(docs: dict[str, str]):
         head, _, name = path.rpartition("/")
         if name == document_name("verdicts") and dataset_of_dir(head) is not None:
             verdicts[dataset_of_dir(head)] = json.loads(text)
-        folder, marker, rest = path.partition("/frame_results/")
+        folder, marker, rest = path.partition("/" + FRAME_RESULTS + "/")
         frame, _, file = rest.partition("/")
         if marker and file == document_name("corrections") and dataset_of_dir(folder) is not None:
             corrections.setdefault(dataset_of_dir(folder), {})[frame] = json.loads(text)

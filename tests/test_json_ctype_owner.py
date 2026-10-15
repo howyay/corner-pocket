@@ -97,17 +97,19 @@ SITES = {
 }
 #: Every import line that binds the home, as `path:line`, with the text of that line.
 BINDINGS = {
-    "annotator/server.py": {27: "from src.reply_body import JSON_CTYPE, write_reply  "
-                                "# noqa: E402"},
-    "src/pid_anchor_ui.py": {35: "from src.reply_body import JSON_CTYPE, write_reply  # noqa"},
+    "annotator/server.py": {27: "from src.reply_body import JPEG_CTYPE, JSON_CTYPE, "
+                                "write_reply  # noqa: E402"},
+    "src/pid_anchor_ui.py": {35: "from src.reply_body import JPEG_CTYPE, JSON_CTYPE, "
+                                 "write_reply  # noqa"},
     "src/pid_seed_ui.py": {35: "from src.reply_body import JSON_CTYPE, write_reply  "
                                "# noqa: E402"},
-    "annotator/unified_server.py": {218: "from src.reply_body import JSON_CTYPE  # noqa: E402"},
+    "annotator/unified_server.py": {218: "from src.reply_body import JPEG_CTYPE, JSON_CTYPE  "
+                                         "# noqa: E402"},
 }
 #: The line count of every module this round touched.  The home stands inside its module
 #: and the four call sites read it without adding a line, so every count holds.
 LINE_COUNTS = {
-    HOME_FILE: 46,
+    HOME_FILE: 49,
     "annotator/server.py": 172,
     "src/pid_anchor_ui.py": 191,
     "src/pid_seed_ui.py": 230,

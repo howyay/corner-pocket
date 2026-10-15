@@ -162,7 +162,7 @@ def is_document_path(relative: str) -> bool:
     if parts[-1] == document_name("verdicts"):
         return dataset_of_dir("/".join(parts[:-1])) is not None
     if len(parts) >= 4 and parts[-1] == document_name("corrections") and parts[-2].isdigit() \
-            and parts[-3] == "frame_results":
+            and parts[-3] == FRAME_RESULTS:
         return dataset_of_dir("/".join(parts[:-3])) is not None
     return False
 
@@ -188,7 +188,7 @@ def correction_path(folder: str, frame: int | str) -> str:
     :func:`document_paths` globs.  The frame folder and the file name stand here, and
     that discovery and the two stores read this function, so the three cannot drift.
     """
-    return f"{folder}/frame_results/{'*' if frame == '*' else int(frame)}/correction.json"
+    return f"{folder}/{FRAME_RESULTS}/{'*' if frame == '*' else int(frame)}/correction.json"
 
 
 def document_paths(set_name: str, root: Path | None = None) -> list[str]:
@@ -285,3 +285,6 @@ def crops_dir(set_name: str) -> str:
     if set_name not in BALL_SETS:
         raise ValueError(unknown_ball_set(set_name))
     return f"out/{set_name}"
+# The frame folder name has one home here: the discovery, the checker and the stores
+# read this name, so one change lands in one file.
+FRAME_RESULTS = "frame_results"

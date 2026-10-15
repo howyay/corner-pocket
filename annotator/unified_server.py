@@ -69,8 +69,8 @@ from annotator.pipeline_stages import DEFAULT_DETECTORS, frame_detectors  # noqa
 # src.store_files.BALL_SETS, the module that also builds those files' paths. This
 # module imports it here, so the console's ball-set route and that owner cannot hold
 # two different lists of accepted names.
-from src.store_files import (BALL_SETS, CTX_DOCUMENT, FACE_STORE, META_DOCUMENT, crops_dir,  # noqa: E402
-                            dump_document, identity_document)
+from src.store_files import (BALL_SETS, CTX_DOCUMENT, FACE_STORE, FRAME_RESULTS, crops_dir,  # noqa: E402
+                            META_DOCUMENT, dump_document, identity_document)
 # The face store path has one owner, src/store_files.py.  This module imports that
 # name and builds the enrolment scratch path from it, so a move of the path reaches
 # both readers below.  The scratch copy sits under out/enroll-eval, so the tail
@@ -215,7 +215,7 @@ BOARD_ROUTE_ALIASES = {'/display': 'board.html'}
 #: (BOARD_FILES, below) builds its own keys from this tuple as well.
 FAVICON_NAMES = ('favicon.svg', 'favicon-32.png', 'favicon-16.png', 'favicon.ico')
 FAVICON_FILES = tuple(f'/{name}' for name in FAVICON_NAMES)
-from src.reply_body import JSON_CTYPE  # noqa: E402
+from src.reply_body import JPEG_CTYPE, JSON_CTYPE  # noqa: E402
 
 class APIError(Exception):
     def __init__(self, message, status=400, **fields):
@@ -1966,7 +1966,7 @@ class Backend:
         return image.tobytes(), meta
 
     def frame_path(self, dataset, frame_index, kind):
-        return self.dataset(dataset) / 'frame_results' / str(frame_index) / (kind + '.json')
+        return self.dataset(dataset) / FRAME_RESULTS / str(frame_index) / (kind + '.json')
 
     @staticmethod
     def _ffmpeg():
@@ -3005,7 +3005,7 @@ def make_handler(backend):
                     if frame is None:
                         raise APIError('no live frame ready', 404)
                     raw, meta = frame
-                    return self.send(200, raw, 'image/jpeg', {
+                    return self.send(200, raw, JPEG_CTYPE, {
                         'X-Live-Sequence': str(meta['seq']),
                         'X-Live-Metadata': json.dumps(meta, separators=(',', ':'), allow_nan=False)})
                 if path == '/api/clip':
@@ -3018,7 +3018,7 @@ def make_handler(backend):
                     return self.file(clip)
                 if path == '/api/frame':
                     raw, meta = backend.indexed_jpeg(query.text('dataset', BUILT_IN_DATASET), query.text('frame'))
-                    return self.send(200, raw, 'image/jpeg', {
+                    return self.send(200, raw, JPEG_CTYPE, {
                         'X-Frame-Index': str(meta['frame_index']),
                         'X-Timestamp-Seconds': str(meta['timestamp_seconds']),
                         'X-Timestamp-Kind': meta['timestamp_kind'],
@@ -3039,9 +3039,9 @@ def make_handler(backend):
                 if path in PAGE_FILES:
                     return self.file(safe_file(backend.root / "annotator", PAGE_ALIASES.get(path, path[1:])))
                 if len(parts) == 4 and parts[0] == "media" and parts[2] == "event-frame":
-                    return self.send(200, backend.event_frame(parts[1], parts[3]), "image/jpeg")
+                    return self.send(200, backend.event_frame(parts[1], parts[3]), JPEG_CTYPE)
                 if len(parts) == 3 and parts[0] == "media" and parts[2] == "frame":
-                    return self.send(200, backend.frame_jpeg(query.text("t"), parts[1]), "image/jpeg")
+                    return self.send(200, backend.frame_jpeg(query.text("t"), parts[1]), JPEG_CTYPE)
                 if parts[0] == "api":
                     return self.json(200, backend.get(parts, query))
                 return self.file(backend.media(parts))

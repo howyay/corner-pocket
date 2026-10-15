@@ -32,7 +32,7 @@ if __name__ == "__main__":
     refuse_file_writes_under_postgres("src/pid_anchor_ui.py")
 from calibrate import OBJECT_MM, project  # noqa
 from src.calib_segments import anchors_reference_path, calibration_name  # noqa
-from src.reply_body import JSON_CTYPE, write_reply  # noqa
+from src.reply_body import JPEG_CTYPE, JSON_CTYPE, write_reply  # noqa
 from src.datasets import BUILT_IN_DATASET, media_path  # noqa
 VIDEO = media_path(ROOT.parent, BUILT_IN_DATASET)
 OUT = ROOT.parent / anchors_reference_path(BUILT_IN_DATASET)
@@ -157,7 +157,7 @@ class Handler(BaseHTTPRequestHandler):
             jpg = frame_with_anchors(t, pts)
             if jpg is None:
                 return self._send(404, b"frame decode failed")
-            return self._send(200, jpg, "image/jpeg")
+            return self._send(200, jpg, JPEG_CTYPE)
         if self.path.startswith("/api/auto"):
             q = dict(p.split("=", 1) for p in self.path.split("?")[1].split("&")) if "?" in self.path else {}
             _ = float(q.get("t", 70))

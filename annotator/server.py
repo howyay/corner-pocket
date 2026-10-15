@@ -24,7 +24,7 @@ if str(ROOT.parent) not in sys.path:
 # The rule for one reply body has one owner, src/reply_body.py. The two pid_*_ui
 # servers call the same function. Before this module called it, the three Handler
 # classes held three copies of that rule and no test compared them.
-from src.reply_body import JSON_CTYPE, write_reply  # noqa: E402
+from src.reply_body import JPEG_CTYPE, JSON_CTYPE, write_reply  # noqa: E402
 # The rule for the file a route may read has one owner, src/served_files.py. The review
 # API (annotator/unified_server.py) calls the same two functions. Before this module
 # called them, its three file routes held three copies of that rule and the /ctx/ route
@@ -111,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/crops/"):
             p = file_under(CROP_DIR, self.path[len("/crops/"):])
             if p:
-                return self._send(200, p.read_bytes(), "image/jpeg")
+                return self._send(200, p.read_bytes(), JPEG_CTYPE)
         if self.path == "/label.html":
             body = (ROOT / "label.html").read_bytes()
             return self._send(200, body, "text/html; charset=utf-8")

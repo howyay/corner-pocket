@@ -46,8 +46,8 @@ from src.datasets import BUILT_IN_DATASET, STATIC_OUT
 # The document names of a data set have that same home: the map
 # src.store_files.document_paths owns them, and document_name and correction_path
 # answer them, so every path this tool loads is the path the stores read.
-from src.store_files import (BALL_SETS, DOCUMENT_SETS, FACE_STORE, IDENTITY_DOCUMENT, SEED_DOCUMENT,
-                             STATE_DOCUMENT, correction_path, dataset_dirs, document_name,
+from src.store_files import (BALL_SETS, DOCUMENT_SETS, FACE_STORE, FRAME_RESULTS, IDENTITY_DOCUMENT,
+                             SEED_DOCUMENT, STATE_DOCUMENT, correction_path, dataset_dirs, document_name,
                              document_paths, get_document, has_documents_table, put_document)
 # The retention bound of the operations event log is imported from its one owner
 # (src.ops_event_log), so this importer and every writer cannot hold two bounds.
@@ -712,7 +712,7 @@ def import_set(conn, spec: DataSet, root, *, replace=False) -> dict:
                 # a document whose file no longer exists is removed (absent = the default)
                 if spec.name == "corrections":
                     known = [row[0] for row in conn.execute(
-                        "SELECT path FROM json_documents WHERE path LIKE %s", ("%/frame_results/%",)).fetchall()]
+                        "SELECT path FROM json_documents WHERE path LIKE %s", ("%/" + FRAME_RESULTS + "/%%",)).fetchall()]
                 elif spec.name == "verdicts":         # the built-in scans and any imported VOD's
                     known = [row[0] for row in conn.execute(
                         "SELECT path FROM json_documents WHERE path LIKE %s",
