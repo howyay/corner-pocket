@@ -140,3 +140,15 @@ def unknown_dataset(dataset: str) -> str:
     `src/store.py:231`, in `src/store_files.py:69`, and in `src/store_pg.py:316`.
     """
     return f"unknown dataset: {dataset}"
+
+
+def unknown_ball_set(crop_set: str) -> str:
+    """Answer the refusal of one ball set that a store does not keep.
+
+    `crop_set` is the ball set that the caller named. The caller raises `ValueError`
+    with this answer, so the three stores refuse an unknown ball set in one wording.
+
+    This function closes the defect of round 116: the sentence sat in
+    `src/store.py:342`, in `src/store_files.py:286`, and in `src/store_pg.py:344`.
+    """
+    return f"unknown ball set: {crop_set}"

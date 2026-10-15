@@ -21,9 +21,11 @@ pinned lines 191, 203 and 205 of :func:`document_paths` keep their numbers, and 
                                     META_DOCUMENT = "meta.json"
                                     def crops_dir(set_name) -> str
 
-An unknown set name is refused in the words the store layer already uses
-(``src/store.py:342``, ``src/store_pg.py:344``), and ``annotator/unified_server.py:1880``
-refuses the same name on the wire before the folder is joined.
+An unknown set name has one home too.  Round 116 moved the sentence of the refusal into
+``unknown_ball_set`` in ``src/store_rules.py``, and the three writers now read it:
+``src/store.py:342``, ``src/store_files.py:286`` and ``src/store_pg.py:344``.
+``annotator/unified_server.py:1880`` still refuses the same name on the wire, in four
+words and without the name, before the folder is joined.
 
 A few sites spell the same words and are NOT the crop set.  They stay, and this guard
 pins each of them with its reason:
@@ -70,9 +72,15 @@ CROP_SETS = ("unlabeled_crops", "unlabeled_crops2", "vod30_event_crops")
 #: The row of the home that reads the folder, pinned by number and text.
 LABELS_LINE = 205
 LABELS_FORM = 'return [f"{crops_dir(crop_set)}/labels.json" for crop_set in BALL_SETS]'
-#: The two refusals that own the words of an unknown set name.
-REFUSALS = ("src/store.py", "src/store_pg.py")
-REFUSAL_FORM = 'raise ValueError(f"unknown ball set: {crop_set}")'
+#: The three writers that refuse an unknown set name.  The sentence of the three has
+#: one home, ``unknown_ball_set`` in ``src/store_rules.py`` (round 116).
+REFUSALS = ("src/store.py", "src/store_files.py", "src/store_pg.py")
+REFUSAL_FORM = "raise ValueError(unknown_ball_set(crop_set))"
+#: The same refusal, with the variable name of each writer's own parameter:
+#: `crops_dir` names its argument `set_name`.  The count of the calls is one per file.
+REFUSAL_FORMS = {"src/store.py": REFUSAL_FORM,
+                 "src/store_files.py": "raise ValueError(unknown_ball_set(set_name))",
+                 "src/store_pg.py": REFUSAL_FORM}
 WIRE_REFUSAL = 'raise APIError("unknown ball set", 404)'
 #: The modules that read the home for a folder or a document name.
 READERS = ("src/make_ctx.py", "src/recut_crops.py", "src/confusion.py", "annotator/server.py",
@@ -175,9 +183,9 @@ class HomeTests(unittest.TestCase):
         answer = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True,
                                 text=True, check=True).stdout.strip()
         self.assertEqual(answer, "unknown ball set: nope")
-        for relative in REFUSALS:
+        for relative, form in REFUSAL_FORMS.items():
             stripped = [line.strip() for line in source_lines(relative)]
-            self.assertIn(REFUSAL_FORM, stripped,
+            self.assertIn(form, stripped,
                           "%s no longer refuses an unknown set name" % relative)
         self.assertIn(WIRE_REFUSAL, [line.strip() for line in source_lines("annotator/unified_server.py")],
                       "the wire refusal of an unknown ball set moved")

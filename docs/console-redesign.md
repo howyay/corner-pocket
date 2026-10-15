@@ -14088,3 +14088,89 @@ guards answer `OK` again.
    intent of the case survives the move: the name stands once, and the value still answers the path.
 3. A Lead edit above a pinned line moves the numbers of other guards.  Keep the edit line-neutral: an
    extra comment line cost two guard repairs.
+
+## Round 116
+
+The base of this round is `79dcc08` "Give the scan quad document name one home, and read the identity
+home".
+
+### The walk
+
+The round-116 walk subagent answered `Strong candidate present - 1 Strong, 1 Worth, 5 Note` in
+`/tmp/dshsess/walk_round116.md` (196 lines, HEAD `79dcc08`, `git status --porcelain` empty, no
+repository file changed, no suite run):
+
+1. The refusal sentence `unknown ball set: <name>` — **Strong**.  Three live writers spell it, and the
+   guard that owns the crop vocabulary pinned only two of them.
+2. `application/json` — **Worth**.  Twenty-one lines in twelve files.  The home already exists:
+   `write_reply(handler, code, body, ctype="application/json")` at `src/reply_body.py:34`.  The python
+   sites that keep their own copy are `annotator/unified_server.py` (four lines, one a `send_header`
+   call of its own), `src/pid_seed_ui.py:158`, `src/pid_anchor_ui.py:145`, `annotator/server.py:63`
+   and `src/eval_faces.py`.  The page half cannot read a python name, so a later round pins the pair.
+3. Five Notes: the Postgres table name `ball_labels` (the migration and the hand-written SQL must each
+   spell it, and `tests/test_write_fingerprint.py` pins it), the `ctx_<crop>.png` rule (three writers,
+   no reader), `/tmp/yolo-cfg` (four writers, no reader), the small wire bodies (`b"not found"` six
+   writers, `b'{"error":"bad json"}'` three writers, no reader of either), and the event-row field
+   table (one key name serves many documents, so it has no single home).
+
+### The row this round ships
+
+The sentence `unknown ball set: <name>` has one home: `unknown_ball_set` at `src/store_rules.py:145`,
+beside its two siblings `unknown_record_set` at `:121` and `unknown_dataset` at `:133`.
+
+| writer | today |
+| --- | --- |
+| `src/store.py:342` | `raise ValueError(unknown_ball_set(crop_set))` |
+| `src/store_files.py:286` | `raise ValueError(unknown_ball_set(set_name))` |
+| `src/store_pg.py:344` | `raise ValueError(unknown_ball_set(crop_set))` |
+
+Each writer extends its existing import line of `src.store_rules` (`src/store.py:75`,
+`src/store_files.py:36`, `src/store_pg.py:53`), so no new import edge appears and the three modules
+keep their line counts (430, 287 and 429 lines).  The home is appended after `unknown_dataset`, the
+last row of its module, so the two siblings keep their numbers too (`src/store_rules.py` grew from 142
+to 154 lines).
+
+The guard is `tests/test_unknown_ball_set_owner.py`, 13 cases.  It pins the home line by number and
+text, pins the six writer sites, walks `src/**/*.py` and `annotator/*.py` (285 files read, `src/sam3`
+skipped), answers an offender as `path:line` plus its line text, plants a copy as its honesty case,
+and holds the two different facts in place: the wire refusal `raise APIError("unknown ball set", 404)`
+at `annotator/unified_server.py:1880`, and the refusal-table row at `annotator/refusals.py:214`.
+
+The guard of the crop vocabulary, `tests/test_crops_document_owner.py`, is true again: its `REFUSALS`
+tuple at `:74` names the three writers, its `REFUSAL_FORM` at `:78` reads the home, and a new
+`REFUSAL_FORMS` at `:81` gives `src/store_files.py` its own variable name.  That guard answers 9 cases.
+
+### Bites
+
+| row | bite | answer |
+| --- | --- | --- |
+| the home | the writer changed the returned sentence at `src/store_rules.py:154` | 4 cases red, naming `src/store_rules.py:154 no longer answers the sentence` |
+| one writer | the writer reverted `src/store.py:342` to the bare f-string | 4 cases red, naming `src/store.py:342 no longer reads the home` |
+| the third writer | the Lead reverted `src/store_files.py:286` | 4 cases red: `the sentence must stand one time, and it stands in ['src/store_files.py', 'src/store_rules.py']`, with `src/store_files.py:286` and `src/store_rules.py:154` named |
+
+Every file came back byte for byte: `src/store_rules.py` answers sha1 `d8650ea3101d`,
+`src/store.py` answers `ee79534d0c3f`, and `src/store_files.py` answers `a3e34f7a26ce` before and
+after the Lead's bite.
+
+### The drift this round caused
+
+None.  Every edit kept its line count, so the citation sweep answered `payable citations: 0` and
+`citations replaced: 0 in 0 files`.  The guard of the citations answers 11 cases `OK`.
+
+### Suites
+
+- node: `tests/test_ops.js` answers 232 pass, 0 fail; `tests/test_board.js` answers 23 pass, 0 fail;
+  `tests/test_app_timeline.js` answers 114 passed, 0 failed, with 75 source-text assertions left.
+- python: `Ran 3211 tests in 565.893s`, `OK (skipped=53)`.  The change set is 6 files: 5 modified
+  files with 34 insertions and 14 deletions, plus the new guard
+  `tests/test_unknown_ball_set_owner.py`.
+
+### Lessons
+
+1. A guard can pin some writers of a fact and miss another.  The crop guard named two raising sites
+   and never looked at `src/store_files.py`, so the third writer stayed invisible for four rounds.
+   The walk found it by reading the guard, not by reading the code.
+2. Appending the home at the end of its owner module keeps every pinned number of that module alive.
+   This round changed three writer modules and one owner without one citation drift or pin repair.
+3. The runner takes one module name per call, and `tests/test_store_pg.py` does not exist in this
+   repository.  The Postgres coverage lives in `tests/test_store_contract.py` (54 cases).

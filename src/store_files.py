@@ -33,7 +33,7 @@ from src.datasets import STATIC_OUT
 from src.calib_segments import ANCHORS_HEAD, ANCHORS_SUFFIX, anchors_reference_path
 # The refusal of an unknown dataset has one home, src/store_rules.py.  The three store
 # backends read that home, so one wording change lands in one file.
-from src.store_rules import unknown_dataset
+from src.store_rules import unknown_ball_set, unknown_dataset
 
 # BALL_SETS is the one owner of the crop-set vocabulary: the sets a crop file can
 # belong to. Every Python module imports it from here (`document_paths` above needs it
@@ -283,5 +283,5 @@ def crops_dir(set_name: str) -> str:
     words as the store layer refuses it.
     """
     if set_name not in BALL_SETS:
-        raise ValueError(f"unknown ball set: {set_name}")
+        raise ValueError(unknown_ball_set(set_name))
     return f"out/{set_name}"

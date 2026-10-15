@@ -72,7 +72,7 @@ import src.store_rules as store_rules  # noqa: E402
 # The refusals of an unknown record set and of an unknown dataset have one home in
 # src/store_rules.py.  The class below reads the two homes by name; the five edit
 # rules stay under the module alias.
-from src.store_rules import unknown_dataset, unknown_record_set  # noqa: E402
+from src.store_rules import unknown_ball_set, unknown_dataset, unknown_record_set  # noqa: E402
 # The anchor file name of a dataset, and the two document names of the
 # calibration, have one owner: src/calib_segments.py.  This module reads that
 # owner, so the path of the anchors document and the path of the calibration
@@ -339,7 +339,7 @@ class JsonStore:
 
     def _labels_path(self, crop_set: str) -> Path:
         if crop_set not in BALL_SETS:
-            raise ValueError(f"unknown ball set: {crop_set}")
+            raise ValueError(unknown_ball_set(crop_set))
         return self.root / crops_dir(crop_set) / document_name("labels")
 
     def labels_get(self, crop_set: str) -> dict:
