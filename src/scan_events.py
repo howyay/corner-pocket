@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))     # the repo root, for the src.* imports
 from src.datasets import BUILT_IN_DATASET, media_relpath
 from ball_detect import detect_ball_candidates
-from src import ball_scale, events_document, sam3_artifact
+from src import ball_scale, calib_segments, events_document, sam3_artifact
 from src.frame_rate import FPS_FALLBACK
 from src.table_geometry import (CANON_H, CANON_W, POCKETS_MM, homography_to_canonical,
                                 nearest_pocket)
@@ -133,7 +133,7 @@ def sam3_confirm(video: str, times: list[float], out_dir: Path):
     model.float()
     proc = make_processor(model)
 
-    fixed = np.array(json.load(open(out_dir / "corners.json"))["corners"], dtype=np.float32)
+    fixed = np.array(json.load(open(out_dir / calib_segments.CORNERS_DOCUMENT))["corners"], dtype=np.float32)
     H = homography_to_canonical(fixed)
 
     results_path = sam3_artifact.artifact_in(out_dir)
@@ -286,7 +286,7 @@ def main():
         if med_corners is None:
             print("NO TABLE FOUND", flush=True)
             return
-    json.dump({"corners": med_corners.tolist()}, open(out_dir / "corners.json", "w"))
+    json.dump({"corners": med_corners.tolist()}, open(out_dir / calib_segments.CORNERS_DOCUMENT, "w"))
 
     # cluster motion candidates: peaks above (mean + 4*std), merged within 6 s
     motions = np.array([r["motion"] for r in records])

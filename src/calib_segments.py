@@ -61,7 +61,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from src.datasets import BUILT_IN_DATASET  # noqa: E402
+from src.datasets import BUILT_IN_DATASET, STATIC_OUT  # noqa: E402
 
 ARTIFACT = "calib_{dataset}_segments.json"
 
@@ -216,9 +216,9 @@ KINDS = ("supplied", "segment", "static", "prior")
 # the order again holds a second copy of the rule.
 CLOTH_STEPS = ("human_segment", "hand_anchors", "scan_corners")
 
-# The scan's own corners file.  It is one path for the checkout, so it carries no
-# dataset name.  The loader takes the root from ``verified_cloth_quad``.
-SCAN_CORNERS = "out/scan30/corners.json"
+# The scan's own corners file: the name, then the path composed from the scan folder.
+CORNERS_DOCUMENT = "corners.json"
+SCAN_CORNERS = f"out/{STATIC_OUT[BUILT_IN_DATASET]}/{CORNERS_DOCUMENT}"
 
 # The two frames a person verified against the reference quad, and the coverage
 # each one measured.  ``docs/calibration-truth.md`` states the same pair.  The

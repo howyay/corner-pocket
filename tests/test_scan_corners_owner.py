@@ -283,12 +283,22 @@ def problems(sites, only=ALL):
 
 class ScanCornersOwnerTests(unittest.TestCase):
     def test_the_owner_states_the_name_once(self):
+        """The owner holds the name once, and it answers the whole path.
+
+        Round 115 gave the document name its own home and composed the path from
+        that name and the scan folder home of ``src/datasets.py``.  The owner
+        therefore holds no literal equal to the whole path, and no kind of finding
+        may name it.  The name itself must stand once, and the value must still
+        carry the two tokens of the path.
+        """
+        source = (ROOT / OWNER).read_text()
+        self.assertEqual(
+            1, source.count('CORNERS_DOCUMENT = "'),
+            f'{OWNER} must state the name once')
         owner = [site for site in copies() if site[0] == OWNER]
         self.assertEqual(
-            1, len(owner),
-            f'{OWNER} must state the name once, and it holds {owner}')
-        self.assertEqual('spells', owner[0][3],
-                         f'the one spelling of {OWNER} is a whole path, and it holds {owner[0]}')
+            [], owner,
+            f'{OWNER} holds a hand-built copy of the path, and it holds {owner}')
         self.assertTrue(OWNER_VALUE and TOKENS[0] in OWNER_VALUE and TOKENS[1] in OWNER_VALUE,
                         f'the owner answers {OWNER_VALUE!r}, which does not name the file')
 

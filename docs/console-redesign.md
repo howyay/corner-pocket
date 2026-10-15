@@ -13990,3 +13990,101 @@ The full suite found two reds of this round:
    no citation drifts, and the suite has one less repair.
 4. The sweep can move a citation to a line with no text when a round appends a block to a file.  Run
    the guard of the citations after every write pass of the sweep.
+
+## Round 115
+
+The base of this round is `d1ef573` "Give the identity document and the cannot-open sentence one
+home each".
+
+### The walk
+
+The round-114 walk subagent answered `Strong candidate present - 1 Strong, 2 Worth, 4 Note` in
+`/tmp/dshsess/walk_round114.md` (143 lines, HEAD `d1ef573`, `git status --porcelain` empty):
+
+1. The document name `corners.json`, the scan cloth quad — **Strong**.  `git grep -F "corners.json"`
+   over `src annotator tools scripts ':!src/sam3'` answered 17 lines in 8 files, with five live
+   sites.  No guard held the bare name: `tests/test_scan_corners_owner.py` flags only a path whose
+   parts hold `scan30` AND `corners`, so every site passed it.
+2. `annotator/unified_server.py:1114` spells the round-113 identity home in two parts —
+   **Worth 1**.  The settled guard reads only a constant equal to the whole path, so the split
+   spelling was blind to it.
+3. `application/json` — 21 lines in 10 modules, three halves.  It stays a Worth row.
+4. Four Notes: `/tmp/yolo-cfg`, the Postgres table vocabulary, the event-row field vocabulary, and
+   the rows the earlier rounds settled.
+
+### The rows this round ships
+
+Row 1, the name `corners.json`.  The home is `CORNERS_DOCUMENT` at `src/calib_segments.py:220`, and
+the path composes it with the scan folder home of `src/datasets.py:38`:
+
+    SCAN_CORNERS = f"out/{STATIC_OUT[BUILT_IN_DATASET]}/{CORNERS_DOCUMENT}"
+
+Four sites read the name:
+
+| site | today |
+| --- | --- |
+| `src/scan_events.py:136` | `json.load(open(out_dir / calib_segments.CORNERS_DOCUMENT))` |
+| `src/scan_events.py:289` | `json.dump(..., open(out_dir / calib_segments.CORNERS_DOCUMENT, "w"))` |
+| `src/eval_faces.py:175` | `path = REPO / "out" / name / calib_segments.CORNERS_DOCUMENT` |
+| `annotator/unified_server.py:1594` | `_EVENT_QUADS = ((CORNERS_DOCUMENT, 'scan cloth quad'),)`, read at `:1382` |
+
+Every site keeps its shape, and the events document keeps its tuple and its human label.  The guard
+is `tests/test_corners_document_owner.py`, 11 cases (5 home, 6 walk), with floors of 200 files
+walked and 100 parsed.  Every site of `fixed_corners.json` stays, and the guard pins each one with
+its reason: it is the calibration corners spec of the highlight, owned by
+`tests/test_corners_spec_owner.py`.
+
+The writer stopped at one step and handed it to the Lead with a measurement.  The case
+`test_the_owner_states_the_name_once` of `tests/test_scan_corners_owner.py` asked for exactly one
+code string of the owner that equals the whole path, so a composed path answered none and the case
+failed.  The Lead changed that case to read every kind of finding and to count the name line, and
+that guard answers 13 cases `OK` again.
+
+Row 2, the missed reader of the identity home.  `annotator/unified_server.py:1114` reads
+`identity_document(self.out)` now, the home the round 113 gave the document at
+`src/store_files.py:259`.  The guard `tests/test_identity_document_owner.py` grew from 8 to 10
+cases: a new `split_spellings()` case flags any expression that joins the two parts of the path
+(`"identity"` and the file name) in one operator, with two planted modules as its honesty check.  No
+existing case was weakened.
+
+### Bites
+
+| row | bite | answer |
+| --- | --- | --- |
+| 1 | the writer re-spelled `"corners.json"` at `src/scan_events.py:136` | 3 of 11 cases red |
+| 1 | the Lead re-spelled the literal at `src/eval_faces.py:175` | `FAILED (failures=4)`, naming `read src/calib_segments.py.CORNERS_DOCUMENT` |
+| 2 | the writer re-spelled the two parts at `annotator/unified_server.py:1114` | 5 of 10 cases red, naming `annotator/unified_server.py:1114: ... joins the two parts` |
+| 2 | the Lead appended a split spelling to `src/store_import.py:818` | `FAILED (failures=5)`, naming `src/store_import.py:818: Path('out') / 'identity' / 'clusters.json' joins the two parts of the identity document path; read src/store_files.py.IDENTITY_DOCUMENT` |
+
+Every file came back byte for byte: `src/scan_events.py` answers sha1 `e548dfc7c001`,
+`src/eval_faces.py` answers `ced99b07af72`, `annotator/unified_server.py` answers `82497079595b`,
+and `src/store_import.py` answers `a49337fc3f6d`.
+
+### The drift this round caused
+
+The writer kept every line count unchanged by extending existing import lines, so the citation sweep
+answered `payable citations: 0` and replaced nothing.  The guard of the citations answers 11 cases
+`OK`.
+
+One Lead edit did move lines: a two-line comment above the home pushed the calibration keys down by
+one, and two guards named the old numbers.  The Lead shortened the comment to one line, and both
+guards answer `OK` again.
+
+### Suites
+
+- node: `tests/test_ops.js` answers 232 pass, 0 fail; `tests/test_board.js` answers 23 pass, 0 fail;
+  `tests/test_app_timeline.js` answers 114 passed, 0 failed, with 75 source-text assertions.  The
+  runner answers exit 0.
+- python: `Ran 3198 tests in 547.414s`, `OK (skipped=53)`.  The change set is 7 files: 6 modified
+  files with 98 insertions and 23 deletions, plus the new guard
+  `tests/test_corners_document_owner.py`.
+
+### Lessons
+
+1. A blocked sub-step is a good answer when it carries a measurement.  The writer stopped at the star
+   guard, measured that a composed path answers no finding, and named the one-line unblock.  The Lead
+   applied it in a minute.
+2. A guard written against a whole-literal shape must move when the fact becomes a composition.  The
+   intent of the case survives the move: the name stands once, and the value still answers the path.
+3. A Lead edit above a pinned line moves the numbers of other guards.  Keep the edit line-neutral: an
+   extra comment line cost two guard repairs.

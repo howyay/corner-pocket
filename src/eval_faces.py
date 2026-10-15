@@ -69,7 +69,7 @@ from src.stats import read_pair
 from src.store_files import FACE_STORE, SEED_DOCUMENT, STATE_DOCUMENT
 # src/weight_pins.py owns the weight paths, so this list cannot name a path that
 # the pin table no longer owns.
-from src import weight_pins
+from src import calib_segments, weight_pins
 from src.video_errors import cannot_open
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "out" / "face-eval"
@@ -172,7 +172,7 @@ def table_role(person_box, corners):
 def load_corners(scan_dir):
     """Cloth quad for a dataset; the highlight VOD reuses the vod30 corners file."""
     for name in (scan_dir, STATIC_OUT[BUILT_IN_DATASET]):
-        path = REPO / "out" / name / "corners.json"
+        path = REPO / "out" / name / calib_segments.CORNERS_DOCUMENT
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

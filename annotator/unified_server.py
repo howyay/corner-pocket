@@ -70,7 +70,7 @@ from annotator.pipeline_stages import DEFAULT_DETECTORS, frame_detectors  # noqa
 # module imports it here, so the console's ball-set route and that owner cannot hold
 # two different lists of accepted names.
 from src.store_files import (BALL_SETS, CTX_DOCUMENT, FACE_STORE, META_DOCUMENT, crops_dir,  # noqa: E402
-                            dump_document)
+                            dump_document, identity_document)
 # The face store path has one owner, src/store_files.py.  This module imports that
 # name and builds the enrolment scratch path from it, so a move of the path reaches
 # both readers below.  The scratch copy sits under out/enroll-eval, so the tail
@@ -92,7 +92,7 @@ from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
 # sources below read that owner for the path they offer and for the name test, so the
 # server cannot hold a second spelling of the name.
 from src.calib_segments import (ANCHORS_HEAD, ARTIFACT as SEGMENT_ARTIFACT,  # noqa: E402
-                                anchors_reference_name)
+                                CORNERS_DOCUMENT, anchors_reference_name)
 # The segment artifact name has the same owner, src/calib_segments.py.  It arrives
 # as ``SEGMENT_ARTIFACT``: ``ARTIFACT`` is the SAM3 ball artifact below.
 # The SAM3 ball artifact name has one owner, src/sam3_artifact.py.  The three event
@@ -1111,7 +1111,7 @@ class Backend:
         with self._identity_lock:
             pipeline = self._identity_pipeline
             index = pipeline.identity if pipeline is not None else IdentityIndex(
-                self.out / "identity" / "clusters.json", store=faces)
+                identity_document(self.out), store=faces)
             gallery = faces.faces_load()
             bound = any(index.get(cid)["player_id"] == player_id for cid in index.clusters())
             if player_id not in gallery and not bound and player_id not in (load(scratch, {}) or {}):
@@ -1591,7 +1591,7 @@ class Backend:
     # disagree by ~3 px at the head rail and ~24 px at the foot rail, and both
     # reproduce the scan's own labelled pocket distances within ~20 mm.
 
-    _EVENT_QUADS = (('corners.json', 'scan cloth quad'),)
+    _EVENT_QUADS = ((CORNERS_DOCUMENT, 'scan cloth quad'),)
 
     def _segments(self, dataset):
         """The measured per-segment calibration for a dataset, or None.

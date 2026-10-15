@@ -31,10 +31,21 @@ this guard pins it with its reason:
   demo must never write (``tests/test_protected_paths_owner.py`` reads that list).  The
   entry is a protected file name, not the path of the identity document.
 
+Round 115 walked the same path again.  The rule above saw only a code constant EQUAL to
+the whole path, so a site that joined the two parts of it in one expression was invisible:
+``annotator/unified_server.py:1114`` spelled ``self.out / "identity" / "clusters.json"``
+while ``identity_document(self.out)`` answered the same path.  That site now reads the
+home, and the walk below has a second rule: any ``+`` or ``/`` expression whose string
+parts carry both ``identity`` and ``clusters.json`` is a spelling of the document.  A site
+that carries one part only -- ``src/eval_faces.py:748`` makes the ``out/identity`` folder
+-- is no spelling of the document.  An f-string holds its literal parts as no such
+expression, so a split spelling built in one stays outside this walk.
+
 The walk below reads every python file of ``src/`` and ``annotator/``, skips ``src/sam3/``
 and the byte-code trees, drops the string node of a module, class or function docstring,
-and answers every code constant equal to the path that is neither the home nor a pinned
-line.  Two floors keep a walk that read nothing from passing in silence.
+and answers every code constant equal to the path, and every split spelling of it, that is
+neither the home nor a pinned line.  Two floors keep a walk that read nothing from passing
+in silence.
 
 Run: ``./scripts/pool-test.sh python test_identity_document_owner``
 """
@@ -79,9 +90,11 @@ WALKED = ("src/**/*.py", "annotator/*.py")
 SKIP = ("src/sam3",)
 FILE_FLOOR = 200
 SCANNED_FLOOR = 150
-#: The modules that read the home instead of spelling the path.
+#: The modules that read the home instead of spelling the path, the last one the reader
+#: round 115 moved off a split spelling.
 READERS = ("src/store.py", "src/person_identity.py", "src/person_pipeline.py",
-           "src/store_export.py", "src/enroll_from_tracklet.py", "src/store_import.py")
+           "src/store_export.py", "src/enroll_from_tracklet.py", "src/store_import.py",
+           "annotator/unified_server.py")
 #: Planted modules of the honesty cases.
 PLANTED = "src/planted_identity.py"
 PLANTED_COPY_LINE = 6
@@ -98,6 +111,25 @@ QUIET_TEXT = ('"""A planted module that names out/identity/clusters.json in its 
               "def row():\n"
               '    """The docstring names the path in words, which is no code constant."""\n'
               "    return 1\n")
+#: The two parts a split spelling joins, and the planted modules of the honesty cases of
+#: that rule.  The first joins both parts in one expression; the second carries the folder
+#: alone, which is no spelling of the document.
+PARTS = ("identity", "clusters.json")
+SPLIT_PLANTED = "src/planted_split_identity.py"
+SPLIT_COPY_LINE = 6
+SPLIT_TEXT = ('"""A planted module that joins the two parts of the identity path."""\n'
+              "\n"
+              "\n"
+              "def row(root):\n"
+              '    """The docstring names out/identity/clusters.json in words, which is no expression."""\n'
+              '    return Path(root) / "identity" / "clusters.json"\n')
+QUIET_SPLIT = "src/quiet_split_identity.py"
+QUIET_SPLIT_TEXT = ('"""A planted module that names the identity folder alone."""\n'
+                    "\n"
+                    "\n"
+                    "def row(root):\n"
+                    '    """The docstring names out/identity in words, which is no expression."""\n'
+                    '    return Path(root) / "out" / "identity"\n')
 #: The probe that reads the home in a fresh interpreter of this venv.
 PROBE = ("from pathlib import Path; import src.store_files as module; "
          "print(module.%s); "
@@ -128,18 +160,41 @@ def planted_copy(relative: str, text: str) -> list:
         path.unlink()
 
 
+def split_spellings(tree: ast.AST) -> list:
+    """Every ``+`` or ``/`` expression of the tree that joins the two parts of the path."""
+    sites = []
+    seen = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.BinOp) or not isinstance(node.op, (ast.Add, ast.Div)):
+            continue
+        texts = [child.value for child in ast.walk(node)
+                 if isinstance(child, ast.Constant) and isinstance(child.value, str)]
+        if any(PARTS[0] in text for text in texts) and any(PARTS[1] in text for text in texts):
+            if node.lineno in seen:
+                continue
+            seen.add(node.lineno)
+            sites.append((node.lineno, ast.unparse(node)))
+    return sites
+
+
 def analyze() -> list:
-    """Every walked code constant of the path that is neither the home nor a pin."""
+    """Every walked spelling of the path that is neither the home nor a pin."""
     offenders = []
     for path in walked_files():
         relative = path.relative_to(ROOT).as_posix()
-        for line, value in code_strings(ast.parse(path.read_text(encoding="utf-8"))):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for line, value in code_strings(tree):
             if value != PATH:
                 continue
             if relative == HOME or line in PINNED.get(relative, ()):
                 continue
             offenders.append("%s:%d: %r spells the identity document path; read %s.%s"
                              % (relative, line, value, HOME, CONSTANT))
+        if relative == HOME:
+            continue
+        for line, text in split_spellings(tree):
+            offenders.append("%s:%d: %s joins the two parts of the identity document path; "
+                             "read %s.%s" % (relative, line, text, HOME, CONSTANT))
     return offenders
 
 
@@ -191,6 +246,16 @@ class WalkTests(unittest.TestCase):
 
     def test_the_walk_ignores_prose(self):
         self.assertEqual([], planted_copy(QUIET, QUIET_TEXT))
+
+    def test_the_walk_finds_a_planted_split_copy(self):
+        offenders = planted_copy(SPLIT_PLANTED, SPLIT_TEXT)
+        self.assertEqual(1, len(offenders), offenders)
+        self.assertTrue(offenders[0].startswith("%s:%d" % (SPLIT_PLANTED, SPLIT_COPY_LINE)),
+                        offenders[0])
+        self.assertIn("joins the two parts", offenders[0])
+
+    def test_the_walk_ignores_a_folder_alone(self):
+        self.assertEqual([], planted_copy(QUIET_SPLIT, QUIET_SPLIT_TEXT))
 
     def test_every_pin_names_a_live_line(self):
         for relative, lines in PINNED.items():
