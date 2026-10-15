@@ -14377,9 +14377,9 @@ to the name.  The bar buttons belong on one row where the width allows.
 title cell filled the first track, so the pencil stood at the card's right edge.  The measured gap
 between the name and the pencil was 85 px at 1000, 186 px at 1280 and 309 px at 1920.
 
-The head is a grid of `auto 1fr` now.  The title holds column 1 with `justify-self:start`.  The
-pencil holds column 2 with `justify-self:start`, so it touches the name.  The parameter line spans
-both columns and keeps its own row.
+The head is a grid of `auto 1fr` now.  Column 1 is only as wide as the name.  The pencil holds
+column 2 with `justify-self:start`, so it touches the name.  The parameter line spans both columns
+and keeps its own row.
 
 The measured gap between the name and the pencil is 4 px at 1000, 1280, 1440 and 1920.  The head
 keeps its 60 px, also where the parameter line sits below the name.
