@@ -215,7 +215,7 @@ BOARD_ROUTE_ALIASES = {'/display': 'board.html'}
 #: (BOARD_FILES, below) builds its own keys from this tuple as well.
 FAVICON_NAMES = ('favicon.svg', 'favicon-32.png', 'favicon-16.png', 'favicon.ico')
 FAVICON_FILES = tuple(f'/{name}' for name in FAVICON_NAMES)
-
+from src.reply_body import JSON_CTYPE  # noqa: E402
 
 class APIError(Exception):
     def __init__(self, message, status=400, **fields):
@@ -2882,7 +2882,7 @@ def make_handler(backend):
             self.response_started = True
             super().end_headers()
 
-        def send(self, status, body, content_type="application/json", headers=None):
+        def send(self, status, body, content_type=JSON_CTYPE, headers=None):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             if not urlsplit(self.path).path.startswith('/media/'):

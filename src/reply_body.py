@@ -27,11 +27,11 @@ The module imports no module of this repository, so every caller can import it w
 second import path.
 """
 from __future__ import annotations
-
-__all__ = ["write_reply"]
-
-
-def write_reply(handler, code, body, ctype="application/json") -> None:
+__all__ = ["write_reply", "JSON_CTYPE"]
+# The default content type of a JSON reply has one home: this name.  Every reply
+# writer of the repository reads it, so one change lands in one file.
+JSON_CTYPE = "application/json"
+def write_reply(handler, code, body, ctype=JSON_CTYPE) -> None:
     """Write one reply for one handler: status line, headers, and body bytes.
 
     `code` is the HTTP status code, `body` is the body as a bytes object, and `ctype` is

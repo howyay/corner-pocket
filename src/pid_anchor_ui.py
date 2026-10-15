@@ -32,7 +32,7 @@ if __name__ == "__main__":
     refuse_file_writes_under_postgres("src/pid_anchor_ui.py")
 from calibrate import OBJECT_MM, project  # noqa
 from src.calib_segments import anchors_reference_path, calibration_name  # noqa
-from src.reply_body import write_reply  # noqa
+from src.reply_body import JSON_CTYPE, write_reply  # noqa
 from src.datasets import BUILT_IN_DATASET, media_path  # noqa
 VIDEO = media_path(ROOT.parent, BUILT_IN_DATASET)
 OUT = ROOT.parent / anchors_reference_path(BUILT_IN_DATASET)
@@ -142,7 +142,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _send(self, code, body, ctype="application/json"):
+    def _send(self, code, body, ctype=JSON_CTYPE):
         # The rule for one reply body has one owner, src/reply_body.py.
         return write_reply(self, code, body, ctype)
 

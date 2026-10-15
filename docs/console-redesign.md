@@ -14174,3 +14174,89 @@ None.  Every edit kept its line count, so the citation sweep answered `payable c
    This round changed three writer modules and one owner without one citation drift or pin repair.
 3. The runner takes one module name per call, and `tests/test_store_pg.py` does not exist in this
    repository.  The Postgres coverage lives in `tests/test_store_contract.py` (54 cases).
+
+## Round 117
+
+The base of this round is `e9f635a` "Give the unknown-ball-set refusal one home".
+
+### The walk
+
+This round takes the Worth row of the round-116 walk (`/tmp/dshsess/walk_round116.md`, verdict
+`Strong candidate present - 1 Strong, 1 Worth, 5 Note`): the content type `application/json`.
+
+Measured at `e9f635a`: 21 lines in 12 files, and they are four different facts:
+
+1. the default content type of a JSON **reply** — five sites, the row of this round;
+2. the **client request header** of an outgoing call — `src/eval_faces.py:1036`,
+   `annotator/twitch_source.py:208`, `annotator/twitch_vod_source.py:154`
+   (`tests/test_twitch_headers_owner.py:215` pins the Twitch pair);
+3. explicit **positional content-type arguments** — `annotator/unified_server.py:2849`, `:2857` and
+   `:2958` (the writer measured the third one; the brief named two);
+4. the **JavaScript** inside two python files (`src/pid_anchor_ui.py:101`, `src/pid_seed_ui.py:114`)
+   and the page half (`annotator/index.html`, `annotator/label.html`, `annotator/app.js`,
+   `annotator/clock-sync.js`) — a page cannot read a python name.
+
+### The row this round ships
+
+The default content type of a JSON reply has one home: `JSON_CTYPE = "application/json"` at
+`src/reply_body.py:33`, in the module that already owns the rule of one reply body.
+
+| site | today |
+| --- | --- |
+| `src/reply_body.py:34` | `def write_reply(handler, code, body, ctype=JSON_CTYPE) -> None:` |
+| `annotator/server.py:63` | `def _send(self, code, body, ctype=JSON_CTYPE):` |
+| `src/pid_anchor_ui.py:145` | `def _send(self, code, body, ctype=JSON_CTYPE):` |
+| `src/pid_seed_ui.py:158` | `def _send(self, code, body, ctype=JSON_CTYPE):` |
+| `annotator/unified_server.py:2885` | `def send(self, status, body, content_type=JSON_CTYPE, headers=None):` |
+
+Four binding lines carry the name: `annotator/server.py:27`, `src/pid_anchor_ui.py:35` and
+`src/pid_seed_ui.py:35` extend their existing import of `src.reply_body`, and
+`annotator/unified_server.py:218` is one NEW edge, traded for the blank line that stood there.  Every
+module keeps its line count (46, 172, 191, 230 and 3126 lines).
+
+The guard is `tests/test_json_ctype_owner.py`, 459 lines, 14 cases.  It pins the home line by number
+and text, pins the five writer sites and the four binding lines, walks `src/**/*.py` and
+`annotator/*.py` for a second spelling — an AST `arg` default whose value is the string — answers an
+offender as `path:line` plus its text, plants such a default as its honesty case, and carries a case
+that the three different facts above are NOT offenders.
+
+The writer recorded a deviation the Lead's brief could not satisfy: the brief asked for a home at the
+END of `src/reply_body.py` and a read of it at line 34 of the same module.  A default argument is
+evaluated at its `def`, so the two cannot both hold — the import of the module would raise
+`NameError`.  The writer measured that, put the home at the HEAD of the module and paid for it with
+the file's spare head lines, so the module keeps 46 lines and line 34 keeps its number.
+
+### Bites
+
+| row | bite | answer |
+| --- | --- | --- |
+| the home | the writer changed the value at `src/reply_body.py:33` | 4 cases red, naming `src/reply_body.py:33 no longer holds the home; it reads 'JSON_CTYPE = "application/jsonx"'` |
+| one writer | the writer reverted `annotator/server.py:63` to the literal | 6 cases red, naming `annotator/server.py:63` and `the content type spells "application/json" in place of src/reply_body.py.JSON_CTYPE` |
+| a second writer | the Lead reverted `annotator/unified_server.py:2885` to the literal | 4 cases red, naming `annotator/unified_server.py:2885: def send(...)` |
+
+Every file came back byte for byte: `src/reply_body.py` answers sha1 `b8745b23…`, `annotator/server.py`
+answers `ad7d6f4c…`, and `annotator/unified_server.py` answers `bf387955cd7d` before and after the
+Lead's bite.
+
+### The drift this round caused
+
+None.  The sweep answered `payable citations: 0` and `citations replaced: 0 in 0 files`, and the guard
+of the citations answers 11 cases `OK`.
+
+### Suites
+
+- node: `tests/test_ops.js` answers 232 pass, 0 fail; `tests/test_board.js` answers 23 pass, 0 fail;
+  `tests/test_app_timeline.js` answers 114 passed, 0 failed, with 75 source-text assertions left.
+- python: `Ran 3225 tests in 748.850s`, `OK (skipped=53)`.  The change set is 6 files: 5 modified
+  files with 13 insertions and 13 deletions, plus the new guard `tests/test_json_ctype_owner.py`.
+
+### Lessons
+
+1. A brief can ask for two things that cannot both hold.  A default argument is evaluated at its `def`,
+   so a home appended at the END of a module cannot be read by the function above it — the import of
+   the module would raise `NameError`.  The writer measured it, put the home at the head of the module
+   and paid for it with the spare head lines, so line 34 kept its number.  The Lead's briefs must name
+   the constraint, not the position.
+2. One literal string can be several facts at once.  `application/json` names a reply default, a client
+   request header, an explicit positional argument, and page text.  Only the first one has one home,
+   and the guard must state why the other three are not offenders.

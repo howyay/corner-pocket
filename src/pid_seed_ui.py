@@ -32,7 +32,7 @@ if __name__ == "__main__":
     refuse_file_writes_under_postgres("src/pid_seed_ui.py")
 # The rule for one reply body has one owner, src/reply_body.py. The review server
 # and the pocket-anchor UI call the same function.
-from src.reply_body import write_reply  # noqa: E402
+from src.reply_body import JSON_CTYPE, write_reply  # noqa: E402
 # The seed document path has one owner, src.store_files.SEED_DOCUMENT. This module
 # reads the name, so it holds no second copy of the path.
 from src.store_files import SEED_DOCUMENT  # noqa: E402
@@ -155,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _send(self, code, body, ctype="application/json"):
+    def _send(self, code, body, ctype=JSON_CTYPE):
         # The rule for one reply body has one owner, src/reply_body.py.
         return write_reply(self, code, body, ctype)
 
