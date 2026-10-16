@@ -1532,12 +1532,12 @@ function syncReviewDataset(){
 let reviewFramesAt=0,reviewFramesTold=null;
 function syncReviewFrames(){
   if(!reviewId){reviewFramesAt=0;reviewFramesTold=null;return}
-  if(reviewFramesTold===reviewId)return;
   const now=Date.now();if(now-reviewFramesAt<1500)return;reviewFramesAt=now;
-  const s=reviewState();if(!s.dataset||!s.frame||s.frame.has)return;
+  const s=reviewState();if(!s.dataset||!s.frame)return;
   if(reviewDatasetSynced!==reviewId)return;
-  reviewFramesTold=reviewId;
-  message(liveText('No frames decoded for this broadcast yet — import it from Broadcasts, then its first frame appears here.','这个直播还没有解码帧——请先在“直播”区块导入，导入后这里会出现它的第一帧。'),true)}
+  // A frame count of zero is the honest signal: `has` is only the stored frame URL, and a live still or the video element paints without it.
+  const blank=!s.frame.count&&!s.frame.has;if(blank===(reviewFramesTold===reviewId))return;reviewFramesTold=blank?reviewId:null;
+  message(blank?liveText('No frames decoded for this broadcast yet — import it from Broadcasts, then its first frame appears here.','这个直播还没有解码帧——请先在“直播”区块导入，导入后这里会出现它的第一帧。'):'',blank)}
 // Round 13, owner item 8: one simple configurator, on History and on Vision. It reads the same
 // `data.sources` the console has always kept and writes the two actions it has always posted; the
 // only thing that is new is that it is one place, reachable from both tabs, instead of a form that

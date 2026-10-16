@@ -4770,18 +4770,25 @@ test('round 16 / owner item 1: a dataset switch blanks the stage before the new 
 });
 test('round 16 / owner item 1: a listed broadcast with no decoded frames says so', () => {
   const h = harness();
-  (()=>{h.messages=[];h.message=(text,error)=>h.messages.push(text);
-    h.context.window.CornerPocketReview=Object.assign(h.context.window.CornerPocketReview||{},{snapshot:()=>({dataset:'tw-2890514774',datasets:[{id:'tw-2890514774'}],frame:{has:false}}),setDataset:()=>Promise.resolve(true)});
+  (()=>{h.messages=[];h.message=(text,error)=>h.messages.push([text,error]);
+    h.context.window.CornerPocketReview=Object.assign(h.context.window.CornerPocketReview||{},{snapshot:()=>({dataset:'tw-2890514774',datasets:[{id:'tw-2890514774'}],frame:{count:0,has:false}}),setDataset:()=>Promise.resolve(true)});
     h.data.history=[{id:'n1',name:'Friday',source:{vodId:'2890514774'},matches:[]}];
     h.reviewId='n1';h.reviewDatasetSynced='n1';h.reviewFramesAt=0;h.reviewFramesTold=null;return h.syncReviewFrames()})();
   const said = JSON.parse(JSON.stringify(h.messages));
   assert.equal(said.length, 1, 'the console explains the blank stage instead of leaving it blank');
-  assert.ok(said[0].includes('import it from Broadcasts'), 'and names the import that fills it');
+  assert.ok(said[0][0].includes('import it from Broadcasts'), 'and names the import that fills it');
+  assert.equal(said[0][1], true, 'in the error style, because the stage stays blank');
   (()=>{h.reviewFramesAt=0;return h.syncReviewFrames()})();
-  assert.equal(JSON.parse(JSON.stringify(h.messages)).length, 1, 'once per broadcast');
-  (()=>{h.context.window.CornerPocketReview.snapshot=()=>({dataset:'tw-2890514774',datasets:[{id:'tw-2890514774'}],frame:{has:true}});
-    h.reviewFramesTold=null;h.reviewFramesAt=0;return h.syncReviewFrames()})();
-  assert.equal(JSON.parse(JSON.stringify(h.messages)).length, 1, 'and nothing at all once frames are decoded');
+  assert.equal(JSON.parse(JSON.stringify(h.messages)).length, 1, 'once per broadcast while the stage stays blank');
+  (()=>{h.context.window.CornerPocketReview.snapshot=()=>({dataset:'tw-2890514774',datasets:[{id:'tw-2890514774'}],frame:{count:0,has:true}});
+    h.reviewFramesAt=0;return h.syncReviewFrames()})();
+  const after = JSON.parse(JSON.stringify(h.messages));
+  assert.equal(after.length, 2, 'a picture that carries no stored frame URL clears the words');
+  assert.equal(after[1][0], '', 'the message is emptied, not left standing');
+  assert.equal(after[1][1], false, 'and the error style goes with it');
+  (()=>{h.context.window.CornerPocketReview.snapshot=()=>({dataset:'tw-2890514774',datasets:[{id:'tw-2890514774'}],frame:{count:120,has:false}});
+    h.reviewFramesAt=0;return h.syncReviewFrames()})();
+  assert.equal(JSON.parse(JSON.stringify(h.messages)).length, 2, 'a dataset with a frame count never raises it at all');
 });
 test('round 28 / owner item: one player in two appearances - the label panel links a body track to a face track', () => {
   const stage = fs.readFileSync(path.join(__dirname, '../annotator/vision-stage.js'), 'utf8');

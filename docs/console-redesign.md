@@ -3206,7 +3206,7 @@ the number that proves it.
 | C17 | A start takes the probe it reports, and the suite asks by name | Nine reads of a private name in `tests/test_live_processing.py` drove the session: the session object, its probe and `_reset_session` | `start(source, detectors=None, *, source_kind=None, probe=None)` at `annotator/live_processing.py:361`, `_reset_session(..., probe=None)` at `:282`, and `status()['probe_alive']` at `:746` | Private reads of `processor._` 11 → 5; `tests/test_live_processing.py` 42 → 43 OK; `tests/test_unified_server.py` 82 OK. The five that remain are deliberate: the capture factory of `4a9654b`, an exact three-wake assertion, and the reset ownership test. Perturbation: `probe=probe)` → `probe=None)` at `:404` fails exactly `test_a_given_probe_is_the_live_edge_the_session_reports` (sha1 `ec820582…` → `cc3bf1b3…` → restored). The card's ground was stale: its nine reads and line numbers belong to the `da765d9` era, and `7297712` had added two, so the two points it proposed cannot reach a count of one |
 | S2 residue | Every writer refuses a name it does not implement | `_do_entrants` and `_do_revival` ended in a fall-through that WAS an action, the class `96248f7` repaired in `_do_match` and `_do_pairing`; the name `entrant_add_not_a_row` was accepted and added a person (entrants 2 → 3) | `elif action == 'entrant_add':` at `annotator/operations.py:851` and `elif action == 'revival_draw':` at `:1008`, each with a final `raise ValueError(f'Unknown … action: {action}')` at `:850` and `:1058` | Legal names unchanged (`git diff -w --numstat` reads `11 1`); `tests/test_operations.py` 73 → 75 OK and `tests/test_store_contract.py` 54 OK (skipped=29). The residue bound tightens with the repair: `tests/test_operations.py:1860` reads `limit = 0 if writer in guards else 1`, so the four multi-row writers that refuse by name must reach no row. Perturbation: the revival refusal replaced by `pass` fails two tests, the new refusal test and the `_do_revival` residue check (sha1 `aada8601…` → `21eabc81…` → restored) |
 
-| C4 | The two dispatch tables become one action registry with two namespaces | `annotator/ops.js:1146-1183` held 95 `if (a === …)` branches with 24 `await action(...)` calls and 84 literal action names, and `annotator/vision-stage.js:1371-1502` held a second table of 63 `case` labels. A name could exist in one table and not the other, and no test could see it | `function newActionRegistry()` at `annotator/vision-stage.js:11` owns `define`, `defineFields`, `module`, `modules`, `names`, `fieldNames`, `has`, `isField`, `row`, `find` and `run`. The stage table is `const stageAct = (() => {` at `:1397` with 63 rows, `function act(action, value, node)` at `:1529` is a three-line forwarder, and `FIELD_ACTIONS` at `:1540` gained `link-target`. The console table is `const opsAct = (() => {` at `annotator/ops.js:1234` with 95 rows, registered by `const registerOps` at `:1226`; `dispatch(name, ctx = {})` at `:1344` and `run(node, event)` at `:1356` are the two ports, `registerOps();` at `:1360` runs at load, and the click handler calls `await opsAct.run(b,e);` at `:1369`. The handle publishes `dispatch`, `actions` and `registry` at `:1549` | `if(a===` 95 → 0; `case '` 63 → 0; `tests/test_ops.js` 201 → 205 pass, 0 fail; `tests/test_board.js` 16 pass, 0 fail; `tests/test_app_timeline.js` 94 passed, 0 failed, with `source-text assertions left: 65` unchanged. Four new tests hold the one registry: every rendered action resolves, every entry has an emitter or is on the named dead list (`UNREACHABLE_ROWS` at `tests/test_ops.js:4928`, eight ops names and no stage name), one registry serves both modules (`registry.find('live-start').length == 2`), and no branch chain is left. In the browser at 1596 by 1045 (raw CDP at `http://127.0.0.1:8130/#/records`): `globalThis.ActionRegistry` holds `modules() = ["vision-stage","ops"]`, 95 ops names, 63 stage names and the legal cross-namespace overlap `["live-start","live-stop","live-detector","chat"]`; the handle from `attach()` holds 174 keys = 6 ports + 168 `SEAM` rows, where HEAD held 171. An in-place row swap is honoured, proved live (`table['archive-reload'] = () => …` then `h.dispatch('archive-reload')` answers `ran the swapped row`) — but a NEW table object is silently undone, because `registerOps()` re-registers `opsAct.table` whenever `shared.module('ops') !== opsAct.table`. `window.OpsConsole.dispatch` stays undefined on purpose: the ports live on the handle. Perturbation: `shared.run('ops', name)` → `shared.run('ops-typo', name)` fails exactly two tests, the new registry test at `tests/test_ops.js:4956` and the round-13 Twitch configurator test at `tests/test_ops.js:4197` (failing at `:4204` with `TypeError: Cannot read properties of undefined (reading 'name')`); sha1 `bd9e72d6…` → `d006e141…` → restored. The eight dead rows are named and not deleted, and the coverage reader reads source literals, so a name built at run time escapes it |
+| C4 | The two dispatch tables become one action registry with two namespaces | `annotator/ops.js:1146-1183` held 95 `if (a === …)` branches with 24 `await action(...)` calls and 84 literal action names, and `annotator/vision-stage.js:1371-1502` held a second table of 63 `case` labels. A name could exist in one table and not the other, and no test could see it | `function newActionRegistry()` at `annotator/vision-stage.js:11` owns `define`, `defineFields`, `module`, `modules`, `names`, `fieldNames`, `has`, `isField`, `row`, `find` and `run`. The stage table is `const stageAct = (() => {` at `:1397` with 63 rows, `function act(action, value, node)` at `:1529` is a three-line forwarder, and `FIELD_ACTIONS` at `:1540` gained `link-target`. The console table is `const opsAct = (() => {` at `annotator/ops.js:1234` with 95 rows, registered by `const registerOps` at `:1226`; `dispatch(name, ctx = {})` at `:1344` and `run(node, event)` at `:1356` are the two ports, `registerOps();` at `:1360` runs at load, and the click handler calls `await opsAct.run(b,e);` at `:1369`. The handle publishes `dispatch`, `actions` and `registry` at `:1549` | `if(a===` 95 → 0; `case '` 63 → 0; `tests/test_ops.js` 201 → 205 pass, 0 fail; `tests/test_board.js` 16 pass, 0 fail; `tests/test_app_timeline.js` 94 passed, 0 failed, with `source-text assertions left: 65` unchanged. Four new tests hold the one registry: every rendered action resolves, every entry has an emitter or is on the named dead list (`UNREACHABLE_ROWS` at `tests/test_ops.js:4935`, eight ops names and no stage name), one registry serves both modules (`registry.find('live-start').length == 2`), and no branch chain is left. In the browser at 1596 by 1045 (raw CDP at `http://127.0.0.1:8130/#/records`): `globalThis.ActionRegistry` holds `modules() = ["vision-stage","ops"]`, 95 ops names, 63 stage names and the legal cross-namespace overlap `["live-start","live-stop","live-detector","chat"]`; the handle from `attach()` holds 174 keys = 6 ports + 168 `SEAM` rows, where HEAD held 171. An in-place row swap is honoured, proved live (`table['archive-reload'] = () => …` then `h.dispatch('archive-reload')` answers `ran the swapped row`) — but a NEW table object is silently undone, because `registerOps()` re-registers `opsAct.table` whenever `shared.module('ops') !== opsAct.table`. `window.OpsConsole.dispatch` stays undefined on purpose: the ports live on the handle. Perturbation: `shared.run('ops', name)` → `shared.run('ops-typo', name)` fails exactly two tests, the new registry test at `tests/test_ops.js:4963` and the round-13 Twitch configurator test at `tests/test_ops.js:4197` (failing at `:4204` with `TypeError: Cannot read properties of undefined (reading 'name')`); sha1 `bd9e72d6…` → `d006e141…` → restored. The eight dead rows are named and not deleted, and the coverage reader reads source literals, so a name built at run time escapes it |
 | C6 | One atomic write with ten implementations | Ten modules each built a temporary file beside the target and called `os.replace`: `src/face_id.py:313-315`, `src/store_export.py:38-44`, `src/person_identity.py:489-492`, `src/store.py:178-185` and `:242-244`, `src/enroll_from_tracklet.py:630-634`, `annotator/shot_clock.py:226-233`, `annotator/vod_import.py:180-187`, `annotator/unified_server.py:223-230`. The docstring at `src/store.py:18` claimed all of them are "the same atomic temp-file + fsync + os.replace", and that claim was false: only some call `fsync`, and the temp names, the cleanup and the encodings differ | `src/atomic_write.py` (120 lines, only `os`, `tempfile`, `pathlib` and `typing`) with `write_atomic(path, write, *, fsync=False, temp_prefix=None, temp_name=None, encoding=None, remove_on_failure=True)` at `:57`, `DEFAULT_PREFIX = "."` at `:40`, and one documented rule per option. Nine call sites moved and each one keeps its own serialization, so `indent`, `sort_keys`, the newline and the encoding are unchanged. The docstring at `src/store.py:18` now names the owner. `annotator/operations.py` was left alone: its own `mkstemp` at `:401` and `replace` at `:408` belong to another worker's file | Five sites are durable (`fsync=True`): `src/store.py:184`, `src/store_export.py:38`, `annotator/shot_clock.py:231`, `annotator/vod_import.py:185`, `annotator/unified_server.py:230`. Four are best-effort on purpose: `src/face_id.py:318`, `src/person_identity.py:493`, `src/store.py:253` (which keeps `temp_name="{stem}.json.tmp"` and `remove_on_failure=False`), `src/enroll_from_tracklet.py:637`. `tests/test_atomic_write.py` 0 → 28 tests OK, and the whole suite then ran `Ran 1468 tests OK (skipped=51)`. My own perturbation found the gap this row closes: with `fsync=True` dropped at `src/store.py:184` the file still ran 26 tests OK, because the owner's fsync behaviour and each site's bytes were tested but nothing said which sites are durable. `class TestCallerDurability` now holds the two role lists, `_drives()` maps nine real write paths by `module.function`, and one test spies on `src.atomic_write.os.fsync` for every site. One run with fsync dropped at `src/store.py:184` and added at `src/person_identity.py:493` failed two subtests by name, and both files were restored from `cp` to sha1 `cd89333e…` and `36b0974c…`. A real-filesystem probe shows the default temp name `.state.json`, and a failing `os.replace` refuses with `disk full`, keeps `{"old": 1}` and removes the temp file |
 
 ### The commits so far
@@ -4436,7 +4436,7 @@ The browser found a defect that no node suite can see. The first module version 
 level `const api`, and `annotator/clock-sync.js` declares that name too. Classic scripts share one
 global scope, so clock-sync.js died with `Uncaught SyntaxError: Identifier 'api' has already been
 declared` and `window.ClockSync` was undefined. The module is one IIFE now and declares no global
-name, and `tests/test_ops.js:5204` loads every page script in one scope.
+name, and `tests/test_ops.js:5211` loads every page script in one scope.
 
 Measured: `node tests/test_ops.js` 216 pass and 0 fail (211 before), `node
 tests/test_app_timeline.js` 100 passed and 0 failed (99 before). The scan `no page script holds a
@@ -14487,3 +14487,58 @@ The layers helper of the stage case in `tests/test_app_timeline.js` counts
 
 Node: `tests/test_ops.js` 234 pass and 0 fail; `tests/test_board.js` 23 pass and 0 fail;
 `tests/test_app_timeline.js` 114 passed, 0 failed with its 75 source-text assertions.
+
+## Round 124 — the blank-stage words follow the frame count, not the frame URL
+
+The owner asked why the console kept showing 这个直播还没有解码帧——请先在“直播”区块导入，导入后这里会出现它的第一帧。
+on a broadcast that plays, and why the play click takes seconds.
+
+### The words fired on the wrong signal
+
+`annotator/ops.js` `syncReviewFrames()` is called by the tick (`annotator/ops.js:970`).  The comment
+at `annotator/ops.js:1530-1531` states the intent: a dataset can be listed and hold no decoded
+frames, because the listing comes from the archive and the frames come from an import, and a blank
+stage must not read as a broken one.  The old test was `if(!s.dataset||!s.frame||s.frame.has)return;`
+with `has: !!state.shotUrl` (`annotator/app.js:1953`).  `shotUrl` is only the stored frame URL, so it
+stays null while the picture comes from the live still or from the `<video>` element, and the
+once-per-review latch `reviewFramesTold` never cleared the words.
+
+Measured on `127.0.0.1:8130` at `#/records/review/2896545848`: the banner stood on screen while
+`#t-img` had `naturalWidth` 1280, and `/api/video?dataset=tw-2896545848` answers `frame_count`
+1089872, fps 30.0003, 1280x720.  A false alarm on a broadcast with a picture.
+
+### The change
+
+`syncReviewFrames()` reads the honest signal: a frame count of zero.
+
+    const blank=!s.frame.count&&!s.frame.has;
+    if(blank===(reviewFramesTold===reviewId))return;
+    reviewFramesTold=blank?reviewId:null;
+    message(blank?liveText(...):'',blank);
+
+A dataset with a frame count never raises the words, and a picture clears them.  The edit is
+line-neutral: `annotator/ops.js` stays 1642 lines, 4 insertions and 4 deletions, so every guard
+that pins an `annotator/ops.js` line still holds.
+
+### The play click
+
+The stage video is the local file `/media/<dataset>/video` (`annotator/app.js:754 videoSrc()`), and
+the server answers byte ranges (`annotator/unified_server.py:2904-2931`).  After a Play click the
+video's `currentTime` first moved at 872 ms, to the scrubber's 419.56 s.  The fallback decode pump
+(`tickPlayback`, `annotator/app.js:722-730`, one frame per request, re-armed every 90 ms while the
+stage is busy) costs 1028 ms for `/api/frame` - the server decodes the requested frame on demand
+(`annotator/unified_server.py:1906 indexed_jpeg` -> `decode_frame`) - plus 1060 ms for
+`/api/unified`, and the first calls after a restart also build the models
+(`annotator/app.js:616-619`).
+
+### The guard
+
+The round-16 case of `tests/test_ops.js` records `[text, error]` pairs now and asserts the
+sequence: count 0 with no picture gives one message that names the import, in the error style; the
+same state again gives no second message; count 0 with a picture gives a second message whose text
+is empty and whose style is not an error; a count of 120 gives no message at all.
+
+Node: `tests/test_ops.js` 234 pass and 0 fail.  The python guards that pin `annotator/ops.js` lines
+pass: `test_clock_document_owner` 14 tests, `test_js_class_hooks_owner` 7, `test_pipeline_note_owner`
+12, `test_stylesheet_owner` 7.  The citation sweep at base `5a2717b` moved three citations of
+`tests/test_ops.js`, because the rewritten case added seven lines.
