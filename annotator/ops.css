@@ -1118,7 +1118,7 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .tl-vod{display:flex;flex-direction:column;gap:var(--sp-2);width:100%;height:100%;padding:var(--sp-2);background:var(--panel);border:1px solid var(--line);border-radius:2px;color:inherit;font:inherit;text-align:left;cursor:pointer}
 #ops-shell .tl-vod:hover{border-color:var(--brass-hover)}
 #ops-shell .tl-vod:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
-#ops-shell .tl-vod-thumb{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border:1px solid var(--line);border-radius:2px;background:var(--rail)}
+#ops-shell .tl-vod-thumb{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border:1px solid var(--line);border-radius:2px;background:var(--rail)}
 #ops-shell .tl-vod-thumb.is-blank{background-image:repeating-linear-gradient(45deg,var(--rail),var(--rail) 6px,var(--panel2) 6px,var(--panel2) 12px)}
 #ops-shell .tl-vod-body{display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
 #ops-shell .tl-vod-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:600 var(--fs-md)/1.3 var(--body);color:var(--ink)}
@@ -1350,3 +1350,81 @@ html,body{-webkit-font-smoothing:antialiased}
 #ops-shell .bracket-card .card-side.first{padding-right:var(--sp-2)}
 #ops-shell .bracket-card .card-side .side-score{flex:none;width:2.5ch;text-align:right;margin-left:auto;font-variant-numeric:tabular-nums}
 #ops-shell .bracket-card .card-side .grow{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Round 125, owner (UI/UX critique, video player first): the review workbench gives its pixels to
+   the picture. Measured at 1440x900 before: the frame was 837x471 with a 124 px dead band on each
+   side, a lone meta line held 38 px under the stage, and the strip kept an empty 16 px mark band.
+   The page height came from calc(100dvh - var(--bar-h,118px)), and --bar-h is never set, so the
+   fallback cut the stage at 1024 and pushed the strip off the screen at 768. A flex column replaces
+   the guess: main takes what the bar leaves. Measured after: 1024x576 at 1440, the whole frame at
+   1024 and 768, and the phone strip no longer paints its controls over each other. */
+@media(min-width:751px){
+  #ops-shell[data-review="1"]{display:flex;flex-direction:column}
+  /* A flex item with auto side margins shrinks to its content: while the stage still loads, the
+     column fell to 1106 px at 1440. The width keeps the page frame it has on every other tab. */
+  #ops-shell[data-review="1"] main,#ops-shell[data-review="1"] .vision-surface{flex:1 1 auto;height:auto;width:100%}
+  #ops-shell[data-review="1"] .vs-grid{grid-template-rows:minmax(0,1fr)}
+  #ops-shell[data-review="1"] .vs-rail,#ops-shell[data-review="1"] .vs-inspector{max-height:none;align-self:stretch}
+  #ops-shell[data-review="1"] .vs-stage{height:100%;align-self:stretch}
+  #ops-shell[data-review="1"] .vs-stage img,#ops-shell[data-review="1"] .vs-stage video{width:auto;height:auto}
+}
+@media(min-width:751px) and (max-width:1100px){
+  #ops-shell[data-review="1"] .vs-grid{grid-template-columns:220px minmax(0,1fr)}
+}
+/* A head with nothing in it is not a row; the "about" line repeats what the date line says. */
+#ops-shell[data-review="1"] .vs-head:not(:has(.vs-chiprow>*,.vs-fresh.stale,.vs-sources>*)){display:none}
+#ops-shell[data-review="1"] .review-why{display:none}
+#ops-shell[data-review="1"] .vs-track:not(:has(.scrub-mark,.scrub-window)){padding-top:0}
+/* Play is the first control and the filled one; Freeze is secondary. The width is fixed so the
+   Play/Pause swap does not move the controls after it. */
+#ops-shell .vs-transport>#vs-play{order:-3;min-width:92px;background:var(--brass);border-color:var(--brass);color:var(--brass-fg)}
+#ops-shell .vs-transport>[data-vs-action=step]{order:-2}
+#ops-shell .vs-transport>.vs-frame-input{order:-1}
+#ops-shell .vs-transport>[data-vs-action=freeze]{background:transparent;color:var(--brass-hi);border-color:var(--brass)}
+#ops-shell .vs-transport>.vs-layers{order:5;flex:0 1 auto;margin-left:auto}
+#ops-shell .vs-transport>.vs-identity{display:none}
+@media(max-width:750px){
+  /* Same selector weight as the desktop .vs-transport>.vs-layers rule, so this one wins: the
+     chips get their own scrolling line instead of a 0 px box under the transport. */
+  #ops-shell .vs-transport{flex-wrap:wrap}
+  #ops-shell .vs-transport>.vs-layers{order:5;flex:1 1 100%;margin-left:0;flex-wrap:nowrap;overflow-x:auto}
+  #ops-shell .vs-layer{white-space:nowrap}
+  #ops-shell[data-review="1"] .vs-clock{display:none}
+  #ops-shell #tabbar{padding-bottom:0}
+  #ops-shell:has(.vs-sheettabs[hidden]){--vs-tabs-h:0px}
+  #ops-shell .vs-strip{bottom:calc(var(--tabbar-h) + var(--clockbar-h) + var(--vs-tabs-h,44px))}
+  #ops-shell .vs-rail,#ops-shell .vs-inspector{bottom:calc(var(--tabbar-h) + var(--clockbar-h) + var(--vs-tabs-h,44px) + var(--vs-strip-h,150px));max-height:calc(100dvh - var(--tabbar-h) - var(--clockbar-h) - var(--vs-tabs-h,44px) - var(--vs-strip-h,150px) - var(--vs-stage-bottom,240px))}
+}
+/* The top bar's sticky rule matches every <header>, so the rail's section heads stuck 12 px under
+   the rail's own padding and rows scrolled visibly above them. Inside the rail they stick at the
+   padding edge instead. While playing, the loop chip sat on the slider and hid its last 118 px; it
+   moves into the mark gutter above the slider. */
+#ops-shell .vs-rail header{top:calc(-1 * var(--sp-3))}
+#ops-shell .scrub-loop{top:0;line-height:14px}
+@media(max-width:750px){
+  /* The phone header repeats "No night is linked" under the select; the select says it. */
+  #ops-shell[data-review="1"] .review-card .vod-links>.muted{display:none}
+  #ops-shell[data-review="1"] main{padding-top:var(--sp-2)}
+}
+@media(min-width:751px) and (max-width:1100px){
+  /* With a ball selected the inspector shares the narrow left column with the rail, and the
+     stage keeps both rows, so the picture does not shrink to make room for the panel. */
+  #ops-shell[data-review="1"] .vs-grid:has(>.vs-inspector:not([hidden])){grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
+  #ops-shell[data-review="1"] .vs-grid>.vs-stage{grid-column:2;grid-row:1 / span 2}
+  #ops-shell[data-review="1"] .vs-grid>.vs-inspector{grid-column:1;max-height:none;align-self:stretch}
+}
+
+/* Round 125, the shot timer page: it is read from across the room, but at 1440x900 the card ended
+   at y 423 and left 477 px (53 %) empty, and the 176 px digits sat left in 31 % of the card. Alone
+   on the page the card fills to the fold and centres a larger face. With a match in play the
+   scoreboard follows the card, so the card keeps its own height there. */
+#ops-shell .stack>.timer-card:only-child{min-height:calc(100dvh - 160px);align-content:center;justify-items:center}
+#ops-shell .stack>.timer-card:only-child .timer-face .clock{font-size:clamp(96px,22vw,340px)}
+#ops-shell .stack>.timer-card:only-child .timer-progress{max-width:min(100%,1100px)}
+@media (max-width:750px){
+  #ops-shell .stack>.timer-card:only-child{min-height:calc(100dvh - var(--tabbar-h) - var(--clockbar-h) - 70px)}
+  #ops-shell .stack>.timer-card:only-child .timer-face .clock{font-size:clamp(64px,30vw,160px)}
+}
+/* Paragraphs kept the browser's bottom margin, which doubled the padding at the foot of cards.
+   Spacing between blocks comes from each container's gap. */
+#ops-shell p{margin-bottom:0}

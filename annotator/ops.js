@@ -485,7 +485,7 @@ function recordsScreen(){
   <div class="heading"><h2>${esc(t('records'))}</h2><span class="muted archive-count">${esc(archiveCountText())}</span></div>
   <p class="muted archive-note">${esc(archiveNoteText())}</p>
   <div class="toolbar" role="group" aria-label="${esc(t('records'))}">
-    ${input('events-search',eventsQuery,'search',`id="events-search" placeholder="${esc(t('search'))}" aria-label="${esc(t('searchRecords'))}"`)}
+    <div class="toolbar-search">${input('events-search',eventsQuery,'search',`id="events-search" placeholder="${esc(t('search'))}" aria-label="${esc(t('searchRecords'))}"`)}</div>
     ${hiddenN?btn(showHidden?t('hideHidden'):t('showHiddenN').replace('{n}',hiddenN),'toggle-hidden'):''}
     <span class="toolbar-gap" aria-hidden="true"></span>
     ${btn(t('sources'),'sources-open')}

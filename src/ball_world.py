@@ -35,9 +35,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-#: A 9-foot pool table's playing surface, the console's calibration convention.
-TABLE_W_MM = 2540.0
-TABLE_H_MM = 1270.0
+#: The table in its landscape reading (length on x).  ``src/table_geometry.py`` owns the
+#: numbers; this module reads them so the world and the canonical frame cannot drift.
+from src.table_geometry import LANDSCAPE_H as TABLE_H_MM, LANDSCAPE_W as TABLE_W_MM
+
+#: How long a visible ball may go unseen before its slot reads ``lost``.  It is a coast
+#: patience, not an event window, so it has its own name.
+COAST_PATIENCE_S = 1.5
 
 #: Corner pockets and the two side pockets on the long rails.
 POCKET_RADIUS_MM = 62.0
@@ -196,7 +200,7 @@ class World:
     def __init__(self, table: Table | None = None, physics: Physics | None = None,
                  gate_mm: float = 55.0, gate_slack: float = 0.35,
                  bootstrap_gate_mm: float = 90.0,
-                 patience_s: float = 1.5, occluded_patience_s: float = 60.0,
+                 patience_s: float = COAST_PATIENCE_S, occluded_patience_s: float = 60.0,
                  color_penalty: float = 40.0):
         self.table = table or Table()
         self.physics = physics or Physics()

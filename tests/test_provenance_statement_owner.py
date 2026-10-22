@@ -104,8 +104,9 @@ STATEMENT_KEY_COUNT = 1
 #: `MODULE_FILES` only, so it is lower than a count that also reads `tools/` and
 #: `scripts/`.  Round 105 added `src/tiny_ball_probe.py`, so that count moved
 #: 284 -> 285.  Round 113 added `src/video_errors.py`, so it moved 285 -> 286.
+#: The ball-permanence round added `src/ball_world.py`, so it moved 286 -> 287.
 CONSOLE_FILE_COUNT = 11
-MODULE_FILE_COUNT = 286
+MODULE_FILE_COUNT = 287
 SHORTEST_CONSOLE_FILE = 500
 
 #: A fragment of the sentence that no console file may hold.  It is the marker of

@@ -26,6 +26,7 @@ import numpy as np
 from src.ball_world import (ACTIVE, COAST, LOST, OCCLUDED, POTTED, Observation,
                             Table, World)
 import src.frame_inference as fi
+from src.frame_rate import FPS_FALLBACK
 
 STATUS_COLOR = {ACTIVE: (0, 200, 0), COAST: (0, 215, 255), OCCLUDED: (0, 140, 255),
                 LOST: (0, 0, 255), POTTED: (140, 140, 140)}
@@ -101,7 +102,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--video", default="data/vod_30min_260815.mp4")
     ap.add_argument("--start", type=float, default=1055.0)
-    ap.add_argument("--seconds", type=float, default=30.0)
+    ap.add_argument("--seconds", type=float, default=40.0)
     ap.add_argument("--fps", type=float, default=15.0)
     ap.add_argument("--weights", required=True)
     ap.add_argument("--out", default="out/ball_world_demo")
@@ -125,7 +126,7 @@ def main():
     cap = cv2.VideoCapture(args.video)
     if not cap.isOpened():
         raise SystemExit("cannot open " + args.video)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS_FALLBACK
     cap.set(cv2.CAP_PROP_POS_MSEC, args.start * 1000.0)
     ok, frame0 = cap.read()
     if not ok:

@@ -14542,3 +14542,80 @@ Node: `tests/test_ops.js` 234 pass and 0 fail.  The python guards that pin `anno
 pass: `test_clock_document_owner` 14 tests, `test_js_class_hooks_owner` 7, `test_pipeline_note_owner`
 12, `test_stylesheet_owner` 7.  The citation sweep at base `5a2717b` moved three citations of
 `tests/test_ops.js`, because the rewritten case added seven lines.
+
+## Round 125 — the video player gives its pixels to the picture
+
+The owner asked for UI/UX critics to find design improvements everywhere and remove useless
+spacing, with the video player first. Three read-only critics measured the console with a browser:
+one on the player, one on the shot timer, Tournament and History, one on Livestream, Regulars,
+Back room and the public board. Their reports are in `out/uiux-critique/` (player.md 15 findings,
+pages.md 20, rest.md 15).
+
+### The player
+
+Measured at 1440x900 before: the frame was 837x471, with a 124 px dead band on each side. A lone
+meta line held 38 px under the stage, and the strip kept an empty 16 px band for event marks. The
+page height came from `calc(100dvh - var(--bar-h, 118px))`, and no code sets `--bar-h`. The
+fallback cut the stage at 1024 wide and pushed the control strip off the screen at 768. On a phone
+the strip painted its controls over each other: the layer chips had a 0 px box, because the
+desktop rule `.vs-transport>.vs-layers` outranks the phone rule `.vs-layers`.
+
+The fix is one appended block in `annotator/ops.css`. Appending keeps every line that a guard pins.
+
+- A flex column replaces the height guess: `main` takes what the bar leaves.
+- `main` and `.vision-surface` keep `width:100%`. A flex item with auto side margins shrinks to its
+  content, and before the first frame landed the column fell to 887 px of 1219 at 1280 wide.
+- An empty head row and the repeated "about" line are hidden. The mark band is kept only when there
+  are marks.
+- Play is the first control and the filled one. Freeze is secondary. Play has a fixed width, so the
+  Play/Pause swap does not move the controls after it.
+- On a phone the transport wraps and the layer chips get their own scrolling line. The sheet and
+  the strip subtract the tab bar and the timer bar, and the hidden sheet tabs reserve no height.
+- The rail's section heads stick at the rail's padding edge. The loop chip moved off the slider.
+
+Measured after, with a decoded frame:
+
+| viewport | frame | strip on screen | overlapping controls | page scroll |
+|---|---|---|---|---|
+| 1440x900 | 1022x575 | yes | 0 | 0 |
+| 1024x768 | 674x379 | yes | 0 | 0 |
+| 768x1024 | 497x280 | yes | 0 | 0 |
+| 390x844 | 364x205 | yes | 0 | 0 |
+
+### The pages
+
+- History: the thumbnails showed at 218x90 (2.4:1) because the image's `height` attribute beat
+  `aspect-ratio`. `height:auto` restores 16:9. The search field is in its `.toolbar-search`
+  wrapper, so it no longer takes the whole row and pushes the buttons to a row of their own.
+- Shot timer: alone on the page, the card fills to the fold and centres the face, which grows from
+  176 px to `clamp(96px,22vw,340px)`. With a match in play, the card keeps its own height.
+- Paragraphs lose the browser's bottom margin, which doubled the padding at the foot of cards.
+
+### The ball-permanence module
+
+The full suite found five owner scans broken by the previous round: `src/ball_world.py` spelled the
+table size, which `src/table_geometry.py` owns, and a 1.5 s default that read as an event window.
+`tools/ball_world_demo.py` spelled the fallback frame rate. The module now imports
+`LANDSCAPE_W`/`LANDSCAPE_H`, names its coast patience `COAST_PATIENCE_S`, and the demo reads
+`FPS_FALLBACK`. The module count moved 286 -> 287 for the new module.
+
+### The guard
+
+`e2e/tests/player.e2e.ts` opens a review, waits for the decoded frame and the settled strip, and
+asserts that the frame fills its stage in one direction, the strip stays on the screen, no control
+paints over another, and the page does not scroll. `e2e/tests/history.e2e.ts` asserts that the
+workbench keeps the page width before the first frame lands.
+
+Runs: node 234, board 23, timeline 114, Python suite OK (skipped 53), end-to-end 7 of 7.
+
+### Not done: decisions for the owner
+
+These findings change behaviour or reverse an earlier ruling, so they wait for the owner:
+
+- Livestream: the only source chip is not selected, so Start may send the built-in dataset instead
+  of the channel on screen. This needs one test start to confirm.
+- Top bar: the second clock row adds 46 px on every page (round 20 put it there).
+- Tournament: "Open Register" goes to the tab already open, and "Start the event" sits below the
+  fold.
+- History: one row per day makes a 6960 px page for 30 cards.
+- Public board: secondary text is 11-20 px on a TV, and a busy night is clipped without a sign.

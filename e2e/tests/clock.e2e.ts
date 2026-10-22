@@ -18,7 +18,10 @@ test('the shot timer counts down and resets', async ({ app, browser }) => {
   const during = await read(browser);
   assert.notEqual(during, before, 'Start moves the clock');
   await browser.evaluate(() => (document.querySelector('[data-action="clock-reset"]') as HTMLElement).click());
-  await wait(600);
-  const after = await read(browser);
+  let after = '';
+  for (let i = 0; i < 40 && after !== before; i += 1) {
+    await wait(150);
+    after = await read(browser);
+  }
   assert.equal(after, before, 'Reset returns the clock to its preset');
 });
