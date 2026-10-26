@@ -105,7 +105,7 @@ BRIDGE_MIN_S = 0.15
 #: Reported as a purity signal, never silently fused over.
 KINK_SPEED_PX_S = 200.0
 
-UNKNOWN = "unknown"
+UNKNOWN = color_names.UNKNOWN  # the colour name of an unread ball; src/color_names.py owns it
 # Colours whose detector class holds exactly one physical ball on a rack: a
 # detection of that colour after a claimed pot disproves the pot.  "white" is
 # NOT unique (cue ball + stripe whites share the class) and the solid colours

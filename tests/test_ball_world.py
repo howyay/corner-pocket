@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.table_geometry import CANON_H, CANON_W, POCKETS_MM
 from src.ball_world import (ACTIVE, COAST, LOST, OCCLUDED, POTTED, Observation,
                             Physics, Slot, Table, World)
 
@@ -31,12 +32,12 @@ class PhysicsTest(unittest.TestCase):
         self.assertAlmostEqual(py, slot.y, places=6)
 
     def test_cushion_reflects_and_keeps_a_share(self):
-        slot = Slot(index=1, color="yellow", x=2400.0, y=600.0)
+        slot = Slot(index=1, color="yellow", x=CANON_W - 140.0, y=600.0)
         slot.last_seen_t = slot.state_t = 0.0
         slot.vx, slot.vy = 400.0, 0.0
         slot.step(1.0, Physics(cushion_retain=0.5), Table())
-        self.assertLess(slot.vx, 0.0)
-        self.assertLessEqual(slot.x, 2540.0)
+        self.assertLess(slot.vx, 0.0, "the long rail reflects the ball")
+        self.assertLessEqual(slot.x, CANON_W)
 
 
 class WorldTest(unittest.TestCase):
@@ -87,9 +88,10 @@ class WorldTest(unittest.TestCase):
 
     def test_pocket_evidence_retires_the_slot(self):
         world = World()
-        world.seed(0.0, [obs(2510.0, 40.0)])
-        world.observe(0.1, [obs(2530.0, 20.0)])
-        world.slots[0].vx, world.slots[0].vy = 200.0, -150.0
+        corner_x, corner_y = POCKETS_MM["foot-right"]
+        world.seed(0.0, [obs(corner_x - 40.0, corner_y - 40.0)])
+        world.observe(0.1, [obs(corner_x - 30.0, corner_y - 30.0)])
+        world.slots[0].vx, world.slots[0].vy = 150.0, 150.0
         world.observe(0.3, [], occluded=lambda x, y, tt: False)
         self.assertEqual(world.slots[0].status, POTTED)
         self.assertEqual(world.stats["potted"], 1)
@@ -117,6 +119,30 @@ class WorldTest(unittest.TestCase):
         self.assertEqual(colors, ["red", "yellow"])
         self.assertEqual(world.stats["id_switch_suspects"], 0)
 
+
+
+class TableFrameTest(unittest.TestCase):
+    """The world reads the canonical frame of src/table_geometry.py (round 128)."""
+
+    def test_the_table_is_the_canonical_frame(self):
+        table = Table()
+        self.assertEqual((table.width_mm, table.height_mm), (float(CANON_W), float(CANON_H)))
+        self.assertEqual(table.pockets, tuple(POCKETS_MM.values()), "the pockets are the owner's table")
+
+    def test_the_side_pockets_sit_on_the_long_rails(self):
+        # The demo once mapped the 1270 mm head rail to x = 2540 mm, so its side pockets
+        # fell on the short rails.  A side pocket lies on a long rail: x is 0 or the width.
+        table = Table()
+        for name in ("left-side", "right-side"):
+            x, y = POCKETS_MM[name]
+            self.assertIn(x, (0.0, float(CANON_W)), name)
+            self.assertAlmostEqual(y, CANON_H / 2.0)
+            self.assertTrue(table.pocket_at(x, y), name)
+        self.assertFalse(table.pocket_at(CANON_W / 2.0, 0.0), "the head rail has no pocket at its middle")
+
+    def test_a_smaller_table_scales_the_owner_pockets(self):
+        table = Table(width_mm=CANON_W / 2.0, height_mm=CANON_H / 2.0)
+        self.assertEqual(table.pockets[-1], (CANON_W / 2.0, CANON_H / 4.0), "right-side scales with the size")
 
 if __name__ == "__main__":
     unittest.main()

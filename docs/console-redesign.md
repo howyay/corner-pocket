@@ -14714,3 +14714,55 @@ spelling, so the label keeps it.
 The edits are line-neutral in `annotator/ops.js`, and the CSS is one appended block. Runs: node 236,
 board 23, timeline 114, the style and line guards OK, Python suite OK. The citation sweep found
 nothing to move.
+
+## Round 128 — the ball world reads its table, its colour word and its weight from the owners
+
+The architecture loop resumed after the owner's console rounds. The walk of 2026-10-26 ran at
+0edb268 over 122 Python files. Its report is `/mnt/ext4dat/pool-data/scratch/walk_round128.md`.
+It found 3 Strong rows, 5 Worth rows and 4 Note rows. Every new or grown literal came from
+`src/ball_world.py` and `tools/ball_world_demo.py`. Both files were added in the ball-permanence
+round. The round-118 fixes hold: `frame_results` and `/frame_results/` left the table.
+
+### The three Strong rows
+
+1. The colour name of an unread ball, `"unknown"`. The world and the demo spelled it on 7 lines.
+   `src/ball_census.py` held `UNKNOWN`, but no other file read it. A missed site makes the old
+   word a colour that is in no group, so a settled slot refuses every match and raises nothing.
+   `src/color_names.py` now owns `UNKNOWN`. The census, the world and the demo read it there.
+2. The table plane. The world built its six pockets by hand. The demo typed `"2540x1270"` and
+   built its own millimetre rectangle with the head rail on x. That rectangle was wrong for this
+   camera. It put the side pockets on the short rails: the demo drew two pocket circles at the
+   middle of the head and foot rails. The world now reads `CANON_W`, `CANON_H` and `POCKETS_MM`.
+   The demo maps the cloth quad with `table_geometry.canonical_destination()`. A short re-run of
+   the demo (t=1105 s, 4 s, 12 slots seeded) draws the side-pocket circles on the two real side
+   pockets of the long rails.
+3. The person weight. The demo defaulted to the bare name `"yolov8n.pt"`. If the pin moved, the
+   demo loaded an unpinned file with no checksum. It now reads `weight_pins.YOLO`.
+
+### The guard
+
+`tests/test_ball_world_owners.py` reads the world, the demo and every tracked Python file under
+`tools/`. The existing owner walks read only `src/`. Four reintroductions each failed one case:
+the unread colour, the typed table size, the bare weight name, and pockets built by hand.
+`tests/test_ball_world.py` places its cushion and pocket cases on the real table. Three new cases
+hold the frame: the table is the canonical frame, the side pockets sit on the long rails, and a
+smaller table scales the owner's pockets. `tests/test_table_geometry.py` also caught a hard-coded
+1270 and 2540 in the first draft of the new guard, so the guard reads the owner's names.
+
+### Storage
+
+The owner moved large data off `/home`, which was 98 % full. `data/vods` (22 videos,
+114 768 910 629 bytes) moved to `/mnt/ext4dat/pool-data/vods`, and `data/vods` is now a symlink to
+it. The copy matched the source: sizes, plus a hash of the first and last 8 MiB of each file. The
+console served frames and byte ranges from the new place. `/home` dropped from 98 % to 75 % used.
+The file containment rule (`src/served_files.py`) resolves both sides, so a symlinked folder
+passes.
+
+### The Worth rows
+
+Five rows stay open as Worth. They are not Strong, because each is local to the demo or low risk:
+- the demo's built-in recording defaults;
+- the palette words against the colour groups;
+- the default match gates;
+- a `"cannot open " + path` string that the guard reads only in its f-string form;
+- the model input sizes spelled twice.

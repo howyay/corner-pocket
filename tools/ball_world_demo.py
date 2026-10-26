@@ -27,6 +27,8 @@ from src.ball_world import (ACTIVE, COAST, LOST, OCCLUDED, POTTED, Observation,
                             Table, World)
 import src.frame_inference as fi
 from src.frame_rate import FPS_FALLBACK
+from src.color_names import UNKNOWN
+from src import table_geometry, weight_pins
 
 STATUS_COLOR = {ACTIVE: (0, 200, 0), COAST: (0, 215, 255), OCCLUDED: (0, 140, 255),
                 LOST: (0, 0, 255), POTTED: (140, 140, 140)}
@@ -46,11 +48,11 @@ PALETTE = (("white", (235, 235, 235)), ("black", (35, 35, 35)),
 def colour_name(bgr_samples: np.ndarray) -> str:
     """Nearest palette entry to the ball's mean colour, brightness-normalised."""
     if bgr_samples.size == 0:
-        return "unknown"
+        return UNKNOWN
     mean = bgr_samples.reshape(-1, 3).astype(np.float64).mean(axis=0)
     peak = float(mean.max()) or 1.0
     unit = mean / peak
-    best_name, best_d = "unknown", 1e9
+    best_name, best_d = UNKNOWN, 1e9
     for name, bgr in PALETTE:
         ref = np.asarray(bgr, np.float64)
         ref = ref / (float(ref.max()) or 1.0)
@@ -106,20 +108,18 @@ def main():
     ap.add_argument("--fps", type=float, default=15.0)
     ap.add_argument("--weights", required=True)
     ap.add_argument("--out", default="out/ball_world_demo")
-    ap.add_argument("--person-weights", default="yolov8n.pt")
+    ap.add_argument("--person-weights", default=weight_pins.YOLO)
     ap.add_argument("--dataset", default="vod30")
     ap.add_argument("--seed-frames", type=int, default=10)
     ap.add_argument("--ball-conf", type=float, default=0.25)
     ap.add_argument("--gate-mm", type=float, default=55.0)
     ap.add_argument("--gate-slack", type=float, default=0.35)
     ap.add_argument("--bootstrap-gate-mm", type=float, default=90.0)
-    ap.add_argument("--table-mm", default="2540x1270")
     args = ap.parse_args()
 
     from ultralytics import YOLO
 
-    table_w, table_h = (float(v) for v in args.table_mm.split("x"))
-    table = Table(width_mm=table_w, height_mm=table_h)
+    table = Table()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -143,7 +143,8 @@ def main():
                and top_right[1] <= max(bottom_left[1], bottom_right[1])
                and top_left[0] < top_right[0])
     quad = raw if ordered else order_quad(raw)
-    mm_rect = np.array([[0, 0], [table_w, 0], [table_w, table_h], [0, table_h]], np.float32)
+    # TL, TR, BR, BL of the cloth map to the head rail at the top: the owner's destination.
+    mm_rect = table_geometry.canonical_destination()
     H = cv2.getPerspectiveTransform(quad.astype(np.float32), mm_rect)
     H_inv = np.linalg.inv(H)
     far_scale = math.hypot(*(mm_rect[1] - mm_rect[0])) / math.hypot(*(quad[1] - quad[0]))

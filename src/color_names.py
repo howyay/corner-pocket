@@ -38,6 +38,10 @@ from typing import Any
 #: because ``color_key`` folds the case of the input before the lookup.
 COLOR_ALIASES = {"red1": "red", "red2": "red"}
 
+#: The colour name of a ball whose colour is not read.  The census writes it for a blank
+#: value, and the ball world treats it as compatible with every colour.  One word, one home.
+UNKNOWN = "unknown"
+
 
 def color_key(value: Any) -> str:
     """Detector colour name -> comparable colour name.

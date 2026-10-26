@@ -37,8 +37,11 @@ Input: `data/vod_30min_260815.mp4`, from t=1105 s for 40 s at 30 frames per
 second (1186 frames, a 9-ball rack and the break). Observations come from the
 trained YOLO11n-seg ball model at `imgsz=1280`; occluders come from YOLOv8n
 person boxes; the table quad comes from the saved static-camera prior
-(`detect_table_for_frame(..., dataset="vod30")`), and the homography maps it to
-2540 x 1270 mm.
+(`detect_table_for_frame(..., dataset="vod30")`). That run mapped the quad to
+2540 x 1270 mm with the head rail on x. Round 128 found that this put the side
+pockets on the short rails. The demo and the world now use the canonical frame of
+`src/table_geometry.py`: 1270 x 2540 mm, head rail at the top, side pockets on the
+long rails. The numbers below come from the first run.
 
 | quantity | value |
 |---|---|

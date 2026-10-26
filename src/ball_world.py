@@ -35,9 +35,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-#: The table in its landscape reading (length on x).  ``src/table_geometry.py`` owns the
-#: numbers; this module reads them so the world and the canonical frame cannot drift.
-from src.table_geometry import LANDSCAPE_H as TABLE_H_MM, LANDSCAPE_W as TABLE_W_MM
+from src.color_names import UNKNOWN
+
+#: The table is the canonical frame of ``src/table_geometry.py``: portrait, the head rail at
+#: the top (y = 0), the long rails on x = 0 and x = CANON_W, the side pockets at their
+#: midpoints.  This module reads the frame and the pocket table, so the two cannot drift.
+from src.table_geometry import CANON_H, CANON_W, POCKETS_MM
 
 #: How long a visible ball may go unseen before its slot reads ``lost``.  It is a coast
 #: patience, not an event window, so it has its own name.
@@ -61,7 +64,7 @@ COLOUR_GROUPS = (
 
 def colours_compatible(a: str, b: str) -> bool:
     """May one ball be read as ``a`` in one frame and ``b`` in another?"""
-    if a == b or a == "unknown" or b == "unknown":
+    if a == b or a == UNKNOWN or b == UNKNOWN:
         return True
     return any(a in group and b in group for group in COLOUR_GROUPS)
 
@@ -97,14 +100,15 @@ class Physics:
 
 @dataclass(frozen=True)
 class Table:
-    width_mm: float = TABLE_W_MM
-    height_mm: float = TABLE_H_MM
+    width_mm: float = float(CANON_W)
+    height_mm: float = float(CANON_H)
     pocket_radius_mm: float = POCKET_RADIUS_MM
 
     @property
     def pockets(self) -> tuple:
-        w, h = self.width_mm, self.height_mm
-        return ((0.0, 0.0), (w / 2.0, 0.0), (w, 0.0), (0.0, h), (w / 2.0, h), (w, h))
+        # The owner's pocket table, scaled to this table's size (equal to it by default).
+        sx, sy = self.width_mm / CANON_W, self.height_mm / CANON_H
+        return tuple((x * sx, y * sy) for x, y in POCKETS_MM.values())
 
     def pocket_at(self, x: float, y: float, radius_mm: float | None = None) -> bool:
         radius = self.pocket_radius_mm if radius_mm is None else radius_mm
@@ -120,7 +124,7 @@ class Observation:
 
     x_mm: float
     y_mm: float
-    color: str = "unknown"
+    color: str = UNKNOWN
     conf: float = 1.0
     source: str = "detector"
 
@@ -272,7 +276,7 @@ class World:
             matched[slot.index] = col
             taken_obs.add(col)
             self.stats["matched"] += 1
-            if slot.color != "unknown" and obs.color != "unknown" and \
+            if slot.color != UNKNOWN and obs.color != UNKNOWN and \
                     slot.color != obs.color and not colours_compatible(slot.color, obs.color):
                 self.stats["id_switch_suspects"] += 1
                 self._event("color_mismatch", slot, t, observed=obs.color)
@@ -302,7 +306,7 @@ class World:
                 if dist > gate:
                     continue
                 penalty = 0.0
-                if slot.color != "unknown" and obs.color != "unknown" and slot.color != obs.color:
+                if slot.color != UNKNOWN and obs.color != UNKNOWN and slot.color != obs.color:
                     if slot.hits >= 2 and not colours_compatible(slot.color, obs.color):
                         continue          # a settled ball's colour is its identity
                     penalty += self.color_penalty
@@ -335,7 +339,7 @@ class World:
         slot.status = ACTIVE
         slot.occluded_since = None
         slot.lost_since = None
-        if obs.color != "unknown":
+        if obs.color != UNKNOWN:
             slot.color = obs.color
         slot.history.append((t, obs.x_mm, obs.y_mm))
 
