@@ -5643,3 +5643,48 @@ test('the console sends the JSON header the owner states', () => {
     for (const header of stated) assert.equal(header.replace(/\s+/g, ''), "'Content-Type':'application/json'", `${page} spells the header the owner states`);
   }
 });
+
+// Round 126, owner items 1 and 3 (2026-10-22). Item 1: the Livestream panel showed one saved
+// channel that was not selected, and Start sent the built-in dataset. Item 3: "Open Register" sent
+// the operator to the tab already open, so nothing moved and the focus stayed on the page body.
+test('round 126 / owner item 1: the one saved channel is the source the panel Start sends', async () => {
+  const h = harness();
+  (()=>{h.lang='en';h.render=()=>{};h.renderSurface=()=>{};h.liveRunning=()=>false;h.liveSnapshot={state:'idle',frames_skipped:0};
+    return h.data.sources=[{id:'chan1',url:'https://www.twitch.tv/ttpoolfriday'}]})();
+  assert.equal(h.liveChoice, 'dataset:vod30', 'the default choice is still the built-in dataset');
+  const html = h.livePanelScreen();
+  assert.equal(h.liveChoice, 'dataset:vod30', 'drawing the panel changes no state');
+  assert.ok(html.includes('class="vs-chip active"') && html.includes('aria-pressed="true"'), 'the one channel shows as selected');
+  assert.ok(html.includes('>twitch ttpoolfriday</button>'), 'while idle the chip names the channel and does not say Live');
+  const sent = [];
+  h.context.fetch = async (url, options) => { sent.push(JSON.parse(options.body)); return {ok: true, json: async () => ({state: 'starting'})}; };
+  await h.dispatch('live-start');
+  assert.deepEqual(JSON.parse(JSON.stringify(sent[0].source)), {kind: 'twitch', source_id: 'chan1'}, 'Start sends the channel on screen');
+  // An explicit choice is kept, and two channels are not guessed between.
+  (()=>{h.liveChoice='vod-replay';return h.data.sources.push({id:'chan2',url:'https://www.twitch.tv/other'})})();
+  assert.equal(h.panelChoice(), 'vod-replay', 'an explicit choice is never replaced');
+  h.liveChoice = 'dataset:vod30';
+  assert.equal(h.panelChoice(), 'dataset:vod30', 'with two channels nothing is guessed');
+  // While a stream runs, the chosen chip says Live again.
+  (()=>{h.data.sources=[{id:'chan1',url:'https://www.twitch.tv/ttpoolfriday'}];h.liveChoice='twitch:chan1';return h.liveRunning=()=>true})();
+  assert.ok(h.livePanelScreen().includes('\u25cf Live \u00b7 twitch ttpoolfriday'), 'a running stream keeps the live mark');
+});
+test('round 126 / owner item 3: Open Register moves to the register form and focuses it', async () => {
+  const h = harness();
+  (()=>{h.lang='en';h.render=()=>{};return h.data.tournament={id:'t1',name:'Friday',status:'registration',format:'singles',raceTo:1,tables:1,entrants:[],matches:[]}})();
+  const html = h.bracketScreen();
+  assert.ok(html.includes('data-action="register-focus"') && !html.includes('data-tab="tonight"'),
+    'the empty bracket button is an action, not a link to the tab already open');
+  const scrolled = [], focused = [];
+  const control = {focus(o) { focused.push(o); }};
+  const form = {scrollIntoView(o) { scrolled.push(o); }, querySelector: () => control};
+  h.context.document.querySelector = sel => (sel === '#entrant-form' ? form : null);
+  await h.dispatch('register-focus');
+  assert.equal(scrolled.length, 1, 'the page scrolls to the register form');
+  assert.equal(focused.length, 1, 'and the first control of the form takes the focus');
+  // With the form closed (a locked night), the button still moves to the entrants card.
+  const card = {scrollIntoView(o) { scrolled.push(o); }, querySelector: () => null};
+  h.context.document.querySelector = sel => (sel === '.card--entrants' ? card : null);
+  await h.dispatch('register-focus');
+  assert.equal(scrolled.length, 2, 'a locked night still scrolls to the entrants card');
+});

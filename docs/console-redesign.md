@@ -14619,3 +14619,51 @@ These findings change behaviour or reverse an earlier ruling, so they wait for t
   fold.
 - History: one row per day makes a 6960 px page for 30 cards.
 - Public board: secondary text is 11-20 px on a TV, and a busy night is clipped without a sign.
+
+## Round 126 — the Livestream Start sends the channel on screen, and Open Register moves
+
+The owner asked for two fixes from the round-125 list (2026-10-22): item 1 (the Livestream source)
+and item 3 (the Open Register button).
+
+### Item 1: the source Start sends
+
+The Livestream panel showed one chip, "Live · twitch ttpoolfriday", with `aria-pressed="false"`.
+The default choice was `dataset:vod30`, and only a click on the chip changed it. Start therefore sent
+`{kind:'dataset', dataset:'vod30'}`, and the server played the built-in 30-minute sample, not the
+channel on screen. The chip also said "Live" while the state line said "idle".
+
+The rule now has one home, `panelChoice()` in `annotator/ops.js`. If the choice is still the built-in
+default and exactly one channel is saved, that channel is the source. The panel marks that chip as
+selected. The panel's Start writes the choice before it calls `startLive()`, so the request names the
+channel. Rendering changes no state. An explicit choice is kept, and with two saved channels the
+function does not guess. The chip says "● Live ·" only while a stream runs.
+
+A probe on 2026-10-25 shows what Start meets now: the channel was offline, so the live resolver
+refused it in 0.34 s with "Twitch channel is offline or has no public playable stream". That refusal
+is the correct result. The old default played the sample and looked as if it worked.
+
+### Item 3: Open Register
+
+The empty-bracket button was `emptyNote('emptyBracket','tab:tonight','goSetup')`. It routed to the
+tab already open, so the page did not move and the focus stayed on the body. The button now runs
+`register-focus`. That action scrolls to `#entrant-form` and puts the focus on its first control. If
+the form is not there (a locked night), it scrolls to the entrants card.
+
+Measured on the live console: at 1440x900 the form is already visible, so the page stays and the
+focus moves to the first control. At 390x844 the page scrolls from 0 to 163 px, and the focused
+control sits above the tab bar.
+
+The earlier report also said that "Start the event" sits below the fold. That holds only below about
+800 px of height and under the phone tab bar, and the jump above now reaches it. No reorder was made.
+
+### The guard
+
+Two cases in `tests/test_ops.js`:
+
+- The one saved channel is the source the panel Start sends. Rendering changes no state. An explicit
+  choice is kept. Two channels are not guessed between. A running stream keeps the live mark.
+- Open Register is an action, not a tab link. It scrolls to the form and focuses it. With no form, it
+  scrolls to the entrants card.
+
+Runs: node 236, board 23, timeline 114, Python suite OK (skipped 53). The edit is line-neutral in
+`annotator/ops.js`, so every guard that pins its lines holds. The citation sweep found nothing to move.
