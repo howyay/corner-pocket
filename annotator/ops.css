@@ -1428,3 +1428,40 @@ html,body{-webkit-font-smoothing:antialiased}
 /* Paragraphs kept the browser's bottom margin, which doubled the padding at the foot of cards.
    Spacing between blocks comes from each container's gap. */
 #ops-shell p{margin-bottom:0}
+
+/* Round 127, the rest of the critique (2026-10-25): Livestream, Regulars and Back room.
+   Measured before at 1440x900 and 390x844. The phone Livestream page reserved 677 px of bottom
+   padding for a workbench that is not there while the stream is off. The source dialog showed
+   its help and the saved URL in tracked capitals, because every small in the shell is a label.
+   The note under a roster tile had its own rule, but a rule of higher specificity won. */
+@media(max-width:750px){
+  :is(#ops-shell)[data-tab=vision]:not(:has(.vision-surface)) main{padding:var(--sp-5) var(--sp-3) calc(var(--tabbar-h) + var(--clockbar-h) + var(--sp-4))}
+}
+/* A sentence or a URL is not a label: it keeps its own case and the body face. */
+#ops-shell #sources-hint,#ops-shell .source-url,#ops-shell .roster-stat small.roster-stat-note{font:var(--fs-sm)/1.4 var(--body);letter-spacing:0;text-transform:none}
+#ops-shell .source-url{overflow-wrap:anywhere}
+/* Back room: one frame for the maintainer block, and a table as wide as its content. */
+#ops-shell details.maintainers article{border:0;padding:0;background:none}
+#ops-shell .maint-status table{width:auto;min-width:min(100%,640px)}
+/* The decorative preview was the largest element on the page: 1342x200 px under an 18 px rail. */
+#ops-shell .cloth-preview{min-height:96px;max-width:560px;border-width:12px}
+/* A checkbox sits on the line of its label, not alone under it. */
+#ops-shell .fields label:has(>input[type=checkbox]){grid-auto-flow:column;justify-content:start;align-items:center;gap:var(--sp-2)}
+/* Round 9 keeps the rating's own label on every row, for a reader who has not learnt the layout.
+   In the 5.5rem column the label wrapped to three lines (42 px) and set every row to 93 px. The
+   column now fits the label on one line, so the row height comes from the name block. */
+#ops-shell .standing{grid-template-columns:2.25rem minmax(0,1fr) auto}
+#ops-shell .standing-rating small{white-space:nowrap;letter-spacing:.06em}
+/* The name block held two stacked small lines under the name (63 px), and that set every row. The
+   status and the record now share one line under the name; the markup keeps both elements, so a
+   reader of the record still finds .standing-record. */
+#ops-shell .standing .standing-name{display:flex;flex-flow:row wrap;column-gap:var(--sp-3);row-gap:2px;align-items:baseline}
+#ops-shell .standing .standing-name>small{margin-top:0}
+#ops-shell .standing .standing-name>.standing-record{flex-basis:100%}
+/* A phone row is 330 px wide: the one-line rating label and the one-line status crowd the name
+   there, so the row keeps its stacked lines and the label wraps under the number again. */
+@media(max-width:750px){
+  #ops-shell .standing{grid-template-columns:2.25rem minmax(0,1fr) 5.5rem}
+  #ops-shell .standing-rating small{white-space:normal;text-align:right}
+  #ops-shell .standing .standing-name{display:flex;flex-direction:column}
+}

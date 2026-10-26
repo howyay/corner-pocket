@@ -14667,3 +14667,50 @@ Two cases in `tests/test_ops.js`:
 
 Runs: node 236, board 23, timeline 114, Python suite OK (skipped 53). The edit is line-neutral in
 `annotator/ops.js`, so every guard that pins its lines holds. The citation sweep found nothing to move.
+
+## Round 127 — the critique's last open findings: Livestream, Regulars and Back room
+
+The owner set aside History and the TV board (2026-10-23). This round applies the remaining safe
+findings of `out/uiux-critique/rest.md`. Every number was measured in the live console.
+
+### Livestream
+
+- While no frames arrive, the status line gives only the state ("idle", and the error if there is
+  one). It shows the frame age and dropped-frame count only while the stream starts or runs.
+  Before, it showed "idle · Frame age: — ms · Dropped: 0" in 32 px type, two of three facts empty.
+- The three buttons use the console row, so they are 40 px tall at 15 px. Before they were 30 px
+  at 12 px, below the 44 px tap target on a phone.
+- On a phone the idle panel no longer reserves the workbench's height. Bottom padding went from
+  677 px to 116 px, and the page no longer scrolls past its content (document 844 px for 844 px).
+
+### Regulars
+
+- Round 9 keeps the rating's own label on every row, and `tests/test_ops.js` holds that, so the
+  label stays. It was 3 lines in an 88 px column. The column now fits it on one line.
+- The status and date sit on the name line. At 1440 and at 1024 a row went from 93 px to 65 px,
+  and the list of 9 from 898 px to 646 px (28 % shorter). On a phone the row keeps its stacked
+  lines, 85 px.
+- The tile note "over 0 rated, 9 unrated" now shows in sentence case. A more specific rule had
+  made it mono capitals.
+
+### Back room and the source dialog
+
+- The two maintainer buttons share a row with an 8 px gap. Before they touched.
+- The status table is as wide as its content (640 px), not 1308 px. Its "State revision" row is
+  gone: the line above the table already says "Last write · revision N".
+- The maintainer article loses its second frame, because the details element already frames it.
+- The decorative cloth preview is 560x147 px, not 1342x200 px.
+- A checkbox sits on the line of its label.
+- The source dialog shows its help and the saved URL in their own case. Before, every `small` in the
+  shell was set as a capitalised label, so the dialog printed "HTTPS://WWW.TWITCH.TV/TTPOOLFRIDAY".
+
+### Not changed
+
+`docs/public-board.md` section 6 names the switch "Public board: on/off", and a test holds that
+spelling, so the label keeps it.
+
+### The guard
+
+The edits are line-neutral in `annotator/ops.js`, and the CSS is one appended block. Runs: node 236,
+board 23, timeline 114, the style and line guards OK, Python suite OK. The citation sweep found
+nothing to move.
