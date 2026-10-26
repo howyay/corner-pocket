@@ -5,7 +5,19 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // The review workbench gives its pixels to the picture, and the strip's controls never overlap.
 test('the video player fills its column and keeps its controls apart', async ({ app, browser }) => {
-  await app.open('/#/records/review/2903032282');
+  // Open the newest broadcast the History page lists. A fixed id breaks when Twitch removes that VOD
+  // (2903032282 left the channel on 2026-10-23, and the route then stays on History).
+  await app.open('/#/records');
+  let opened = false;
+  for (let i = 0; i < 120 && !opened; i += 1) {
+    opened = await browser.evaluate(() => {
+      const card = document.querySelector('#main [data-action="tl-review"]') as HTMLElement | null;
+      if (card) card.click();
+      return !!card;
+    });
+    if (!opened) await wait(250);
+  }
+  assert.ok(opened, 'History lists a broadcast to open');
   let ready = false;
   for (let i = 0; i < 240 && !ready; i += 1) {
     ready = await browser.evaluate(() => {
