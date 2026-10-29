@@ -56,7 +56,7 @@ from src.info_complete_scan import match_balls, to_table_mm  # noqa: E402
 from src.projection import PIXEL_TOLERANCE, project_point  # noqa: E402
 from src.sam3_ball_cache import APP_CACHE, OWN_CACHE, load_cache  # noqa: E402
 from src.datasets import BUILT_IN_DATASET, media_relpath  # noqa: E402
-from src import ball_scale, events_document, sam3_artifact  # noqa: E402
+from src import ball_scale, color_names, events_document, sam3_artifact  # noqa: E402
 # src/calib_segments.py owns the scan corners path, so this file reads the owner.
 from src.calib_segments import SCAN_CORNERS  # noqa: E402
 from src.event_window import EVENT_AFTER_S, EVENT_BEFORE_S  # noqa: E402
@@ -291,7 +291,7 @@ class Probe:
             self._frame_cache[key] = frame
             self.sam3_frames_decoded += 1
         if frame is None:
-            return "unknown"
+            return color_names.UNKNOWN
         return classify_ball_color(frame, cx, cy, r)
 
     def census(self, samples, times):

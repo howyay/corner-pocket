@@ -88,7 +88,7 @@ PAGE_READER_NAME_FORM = "NAME = '%s'" % HOME_NAME
 PAGE_READER_LINE = 39
 #: The directories the walk reads, the subtree it skips, and the floors that keep a
 #: vacuous walk from passing.
-PY_WALKED = ("src/**/*.py", "annotator/*.py")
+PY_WALKED = ("src/**/*.py", "annotator/*.py", "tools/*.py", "scripts/*.py")
 PY_SKIP = ("src/sam3",)
 PY_FILE_FLOOR = 200
 SCANNED_FLOOR = 100

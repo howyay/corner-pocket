@@ -40,6 +40,8 @@ from src import color_names, table_geometry, weight_pins  # noqa: E402
 
 WORLD = "src/ball_world.py"
 DEMO = "tools/ball_world_demo.py"
+#: The census readers that compare a colour with the unread word (round 129).
+CENSUS_READERS = ("src/eval_events.py", "src/motion_scan.py", "src/ball_census.py")
 #: The bare file name of the pinned person weight.
 YOLO_NAME = Path(weight_pins.YOLO).name
 
@@ -65,8 +67,8 @@ def code_constants(rel):
 class TheBallWorldReadsItsOwnersTests(unittest.TestCase):
 
     def files(self):
-        files = sorted(set([WORLD, DEMO] + tracked("tools/*.py")))
-        self.assertGreaterEqual(len(files), 6, "the walk read the world, the demo and the tools")
+        files = sorted(set([WORLD, DEMO] + tracked("tools/*.py") + list(CENSUS_READERS)))
+        self.assertGreaterEqual(len(files), 9, "the walk read the world, the demo, the tools and the census readers")
         return files
 
     def test_no_file_spells_the_unread_colour(self):

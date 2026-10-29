@@ -196,7 +196,7 @@ def probe_media(path, ffmpeg_command):
     try:
         fps = float(cap.get(cv2.CAP_PROP_FPS))
         width, height = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        ok = cap.isOpened() and frames > 0 and cap.set(cv2.CAP_PROP_POS_FRAMES, frames - 1) and cap.read()[0]
+        ok = cap.isOpened() and frames > 0 and _reads_to_last_frame(cap, frames, cv2)
     finally:
         cap.release()
     if not ok or not math.isfinite(fps) or fps <= 0 or min(width, height) <= 0:
@@ -237,7 +237,7 @@ class VodImporter:
         self._disk_usage = disk_usage
         self._public_error = public_error or (lambda exc: f"internal error ({type(exc).__name__})")
         self._monotonic = monotonic
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._start_lock = threading.Lock()
         self._recent = {}
         self._job = {"state": "idle", "error": None}
@@ -522,6 +522,11 @@ class VodImporter:
         outlive the failure it belongs to.
         """
         with self._lock:
+            if self._job.get("_cancel"):
+                fields = dict(state="cancelled", error=None,
+                              message=f"{self._job.get('_reason') or 'Cancelled'}; the partial file "
+                                      "was removed and nothing was listed.")
+                identity = None
             self._job.update(fields, finished_at=now_iso(),
                              elapsed_s=round(self._monotonic() - self._job["_t0"], 1),
                              _identity=dict(identity or {}))
@@ -546,11 +551,10 @@ class VodImporter:
             code = proc.wait()
             reader.join(timeout=5)
             with self._lock:
-                cancelled, reason = self._job.get("_cancel"), self._job.get("_reason")
+                cancelled = self._job.get("_cancel")
             if cancelled:
                 part.unlink(missing_ok=True)
-                return self._finish(state="cancelled", message=f"{reason or 'Cancelled'}; the partial file "
-                                    "was removed and nothing was listed.")
+                return self._finish(state="cancelled")
             if code != 0:
                 part.unlink(missing_ok=True)
                 last = [line for line in "".join(tail).splitlines() if line.strip()]
@@ -560,23 +564,27 @@ class VodImporter:
                 sentence, identity = filled_refusal(FFMPEG_FAILED, exit_code=code, detail=detail)
                 return self._finish(identity=identity, state="error", error=sentence)
             meta = self._probe(part)
-            final = self._media(plan["id"])
-            os.replace(part, final)
+            # Probe without the lock.  Serialize the commit with cancellation after the probe.
             with self._lock:
+                if self._job.get("_cancel"):
+                    part.unlink(missing_ok=True)
+                    return self._finish(state="cancelled")
+                final = self._media(plan["id"])
+                os.replace(part, final)
                 wall = self._monotonic() - self._job["_t0"]
-            entry = {"vod_id": plan["vod_id"], "channel": plan["channel"], "title": plan["title"],
-                     "created_at": plan["created_at"], "length_s": plan["length_s"],
-                     "start_s": plan["range"]["start_s"], "end_s": plan["range"]["end_s"],
-                     "whole": plan["range"]["whole"], "bytes": final.stat().st_size,
-                     "imported_at": now_iso(), "import_wall_s": round(wall, 1), "variant": variant, **meta}
-            try:
-                self._update_index(lambda vods: vods.__setitem__(plan["id"], entry))
-            except Exception:
-                final.unlink(missing_ok=True)
-                raise
-            self._finish(state="done", done_s=float(self._job["total_s"]), percent=100.0, eta_s=0,
-                         bytes=entry["bytes"], media=meta,
-                         message=f"Imported {plan['id']}: {size_text(entry['bytes'])}, {meta['frames']} frames.")
+                entry = {"vod_id": plan["vod_id"], "channel": plan["channel"], "title": plan["title"],
+                         "created_at": plan["created_at"], "length_s": plan["length_s"],
+                         "start_s": plan["range"]["start_s"], "end_s": plan["range"]["end_s"],
+                         "whole": plan["range"]["whole"], "bytes": final.stat().st_size,
+                         "imported_at": now_iso(), "import_wall_s": round(wall, 1), "variant": variant, **meta}
+                try:
+                    self._update_index(lambda vods: vods.__setitem__(plan["id"], entry))
+                except Exception:
+                    final.unlink(missing_ok=True)
+                    raise
+                self._finish(state="done", done_s=float(self._job["total_s"]), percent=100.0, eta_s=0,
+                             bytes=entry["bytes"], media=meta,
+                             message=f"Imported {plan['id']}: {size_text(entry['bytes'])}, {meta['frames']} frames.")
         except Exception as exc:
             part.unlink(missing_ok=True)
             text = str(exc) if isinstance(exc, VodImportError) else self._public_error(exc)
@@ -596,7 +604,10 @@ class VodImporter:
             proc.kill()
             proc.wait()
         thread.join(timeout=15)
-        self._media(dataset_id, part=True).unlink(missing_ok=True)
+        with self._lock:
+            if self._thread is thread and self._job["state"] == "running":
+                # The worker cleans up before it finishes.  Only a timed-out worker needs this cleanup.
+                self._media(dataset_id, part=True).unlink(missing_ok=True)
         return True
 
     def cancel(self, payload):
@@ -925,3 +936,28 @@ class VodImporter:
             return self.scan()
         self._auto_wake()
         return self._auto_view()
+
+
+#: Read this many tail frames before a full read.  A seek can land late on a 1080p VOD
+#: with B-frames (tw-2767627717: a seek to frame 11000 returned frame 11002).
+LAST_FRAME_LEAD = 120
+
+
+def _reads_to_last_frame(cap, frames, cv2):
+    """Read the expected tail, or read every expected frame from the start.
+
+    A failed seek or a short tail read needs a full read.  Missing frames never get an allowance.
+    """
+    start = max(0, frames - LAST_FRAME_LEAD)
+    if cap.set(cv2.CAP_PROP_POS_FRAMES, start):
+        read = 0
+        while cap.read()[0]:
+            read += 1
+        if read >= frames - start:
+            return True
+    if not cap.set(cv2.CAP_PROP_POS_FRAMES, 0):
+        return False
+    for _ in range(frames):
+        if not cap.read()[0]:
+            return False
+    return True

@@ -78,7 +78,7 @@ from src.scan_events import RECORDS_NAME  # noqa: E402
 from src.frame_rate import FPS_FALLBACK  # noqa: E402
 from src.event_window import (AT_TOL_S, CONTROL_HALF_S, EVENT_AFTER_S,  # noqa: E402
                               EVENT_BEFORE_S)
-from src.video_errors import cannot_open  # noqa: E402
+from src.video_errors import cannot_open; from src.color_names import UNKNOWN  # noqa: E402
 # --------------------------------------------------------------- geometry ----
 
 SCAN_W, SCAN_H = NATIVE_FRAME         # native frame size of the vod30 recording, from ball_scale
@@ -1840,7 +1840,7 @@ def moving_ball_instances(census: dict, min_move_px: float = 5.0,
         for ball in census[b]:
             by_b.setdefault(ball.get("color"), []).append(ball)
         for color, left in by_a.items():
-            if color in (None, "unknown") or color not in by_b:
+            if color in (None, UNKNOWN) or color not in by_b:
                 continue
             right = by_b[color]
             # Mutual nearest inside the colour: a pair is used only when each side is

@@ -29,6 +29,7 @@ import src.frame_inference as fi
 from src.frame_rate import FPS_FALLBACK
 from src.color_names import UNKNOWN
 from src import table_geometry, weight_pins
+from src.datasets import BUILT_IN_DATASET, media_relpath
 
 STATUS_COLOR = {ACTIVE: (0, 200, 0), COAST: (0, 215, 255), OCCLUDED: (0, 140, 255),
                 LOST: (0, 0, 255), POTTED: (140, 140, 140)}
@@ -102,14 +103,14 @@ def ball_observations(result, frame, H):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--video", default="data/vod_30min_260815.mp4")
+    ap.add_argument("--video", default=media_relpath(".", BUILT_IN_DATASET))
     ap.add_argument("--start", type=float, default=1055.0)
     ap.add_argument("--seconds", type=float, default=40.0)
     ap.add_argument("--fps", type=float, default=15.0)
     ap.add_argument("--weights", required=True)
     ap.add_argument("--out", default="out/ball_world_demo")
     ap.add_argument("--person-weights", default=weight_pins.YOLO)
-    ap.add_argument("--dataset", default="vod30")
+    ap.add_argument("--dataset", default=BUILT_IN_DATASET)
     ap.add_argument("--seed-frames", type=int, default=10)
     ap.add_argument("--ball-conf", type=float, default=0.25)
     ap.add_argument("--gate-mm", type=float, default=55.0)

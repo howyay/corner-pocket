@@ -699,5 +699,181 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(self.request("GET", "/api/vods/queue")[1]["enabled"], True)
 
 
+class LastFrameProbeTests(unittest.TestCase):
+    """A late seek must not hide missing tail frames."""
+
+    class Cap:
+        """Decode `decodable` frames.  A seek after frame zero lands `late` frames late."""
+
+        def __init__(self, decodable, late, failed_seeks=()):
+            self.decodable, self.late, self.at = decodable, late, 0
+            self.failed_seeks, self.seeks = failed_seeks, []
+
+        def set(self, _prop, frame):
+            self.seeks.append(frame)
+            if frame in self.failed_seeks:
+                return False
+            self.at = frame + self.late if frame else 0
+            return True
+
+        def read(self):
+            if self.at >= self.decodable:
+                return False, None
+            self.at += 1
+            return True, None
+
+    def check(self, frames, decodable, late):
+        from annotator.vod_import import _reads_to_last_frame
+        cv2 = SimpleNamespace(CAP_PROP_POS_FRAMES=1)
+        return _reads_to_last_frame(self.Cap(decodable, late), frames, cv2)
+
+    def test_a_complete_file_passes_when_the_jump_lands_late(self):
+        # tw-2767627717: 11068 frames; a seek to frame 11000 landed on frame 11002.
+        for late in range(3):
+            self.assertTrue(self.check(11068, 11068, late), f"late by {late}")
+            self.assertTrue(self.check(30, 30, late), f"short file, late by {late}")
+
+    def test_a_file_cut_short_fails(self):
+        self.assertFalse(self.check(11068, 11068 - 50, 0))
+        self.assertFalse(self.check(11068, 11068 - 50, 2))
+        self.assertFalse(self.check(11068, 0, 0))
+
+    def test_one_or_two_missing_tail_frames_fail(self):
+        for frames in (30, 11068):
+            for missing in (1, 2):
+                for late in range(3):
+                    with self.subTest(frames=frames, missing=missing, late=late):
+                        self.assertFalse(self.check(frames, frames - missing, late))
+
+    def test_a_short_file_is_read_from_its_first_frame(self):
+        self.assertTrue(self.check(30, 30, 0))
+        self.assertFalse(self.check(30, 10, 0))
+
+    def test_the_tail_fast_path_does_not_read_from_zero(self):
+        from annotator.vod_import import LAST_FRAME_LEAD, _reads_to_last_frame
+        cap = self.Cap(11068, 0)
+        self.assertTrue(_reads_to_last_frame(cap, 11068, SimpleNamespace(CAP_PROP_POS_FRAMES=1)))
+        self.assertEqual(cap.seeks, [11068 - LAST_FRAME_LEAD])
+
+    def test_a_short_tail_read_restarts_from_zero(self):
+        from annotator.vod_import import LAST_FRAME_LEAD, _reads_to_last_frame
+        for late in (1, 2):
+            with self.subTest(late=late):
+                cap = self.Cap(11068, late)
+                self.assertTrue(_reads_to_last_frame(cap, 11068, SimpleNamespace(CAP_PROP_POS_FRAMES=1)))
+                self.assertEqual(cap.seeks, [11068 - LAST_FRAME_LEAD, 0])
+
+    def test_a_failed_tail_seek_restarts_from_zero(self):
+        from annotator.vod_import import LAST_FRAME_LEAD, _reads_to_last_frame
+        start = 11068 - LAST_FRAME_LEAD
+        for missing in (0, 1, 2):
+            with self.subTest(missing=missing):
+                cap = self.Cap(11068 - missing, 0, failed_seeks=(start,))
+                self.assertEqual(_reads_to_last_frame(cap, 11068, SimpleNamespace(CAP_PROP_POS_FRAMES=1)),
+                                 missing == 0)
+                self.assertEqual(cap.seeks, [start, 0])
+
+    def test_a_failed_restart_refuses_the_file(self):
+        from annotator.vod_import import LAST_FRAME_LEAD, _reads_to_last_frame
+        start = 11068 - LAST_FRAME_LEAD
+        for failed_seeks in ((0,), (start, 0)):
+            with self.subTest(failed_seeks=failed_seeks):
+                cap = self.Cap(11068, 1, failed_seeks=failed_seeks)
+                self.assertFalse(_reads_to_last_frame(cap, 11068, SimpleNamespace(CAP_PROP_POS_FRAMES=1)))
+                self.assertEqual(cap.seeks, [start, 0])
+
+
+class ProbeCancellationTests(unittest.TestCase):
+    def _cancel_during_probe(self, *, join_times_out=False, probe_fails=False):
+        from unittest.mock import patch
+        entered, release = threading.Event(), threading.Event()
+        stop_waiting, cancel_done = threading.Event(), threading.Event()
+        results, errors, join_timeouts = [], [], []
+
+        def probe(path):
+            entered.set()
+            if not release.wait(20):
+                raise RuntimeError("the test did not release the probe")
+            if probe_fails:
+                raise VodImportError("cannot read the removed partial file")
+            return {"fps": 30.0, "frames": 9000, "width": 1280, "height": 720}
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            script = root / "fake_ffmpeg.py"
+            script.write_text(FAKE_FFMPEG)
+            script.with_suffix(".py.mode").write_text("ok")
+            sources = [{"kind": "channel", "channel": "examplechannel"}]
+            importer = VodImporter(root, lambda: {"sources": sources}, twitch=twitch_stub([]),
+                                   ffmpeg=lambda: [sys.executable, str(script)], probe=probe,
+                                   disk_usage=lambda path: SimpleNamespace(free=10**12))
+            job = importer.start({"vod": OWN, "start_s": 0, "duration_s": 60})
+            part = root / "data" / "vods" / (job["id"] + ".mp4.part")
+            final = part.with_suffix("")
+            index = root / "out" / "vods" / "index.json"
+            worker = importer._thread
+            join_worker = worker.join
+
+            def cancel():
+                try:
+                    results.append(importer.cancel({"confirm": True}))
+                except Exception as exc:
+                    errors.append(exc)
+                finally:
+                    cancel_done.set()
+
+            def stop_join(timeout):
+                join_timeouts.append(timeout)
+                stop_waiting.set()         # _stop has accepted cancellation and released the lock.
+                if not join_times_out:
+                    join_worker(timeout=10)
+
+            stopper = threading.Thread(target=cancel, daemon=True)
+            try:
+                self.assertTrue(entered.wait(10), "the probe did not start")
+                self.assertTrue(part.is_file())
+                with patch.object(worker, "join", side_effect=stop_join), \
+                        patch("annotator.vod_import.os.replace", wraps=os.replace) as replace, \
+                        patch.object(importer, "_update_index", wraps=importer._update_index) as update_index:
+                    stopper.start()
+                    self.assertTrue(stop_waiting.wait(5), "cancellation blocked behind the probe")
+                    self.assertFalse(release.is_set())
+                    if join_times_out:
+                        self.assertTrue(cancel_done.wait(5), "cancellation did not return after the join timeout")
+                        self.assertFalse(part.exists())
+                    release.set()
+                    self.assertTrue(cancel_done.wait(10), "cancellation did not finish")
+                    join_worker(timeout=10)
+                    self.assertFalse(worker.is_alive())
+                    self.assertEqual(errors, [])
+                    self.assertEqual(join_timeouts, [15])
+                    self.assertEqual(len(results), 1)
+                    if not join_times_out:
+                        self.assertEqual(results[0]["state"], "cancelled")
+                    ended = importer.job()
+                    self.assertEqual(ended["state"], "cancelled")
+                    self.assertIsNone(ended["error"])
+                    self.assertIn("Cancelled by the operator", ended["message"])
+                    self.assertFalse(part.exists())
+                    self.assertFalse(final.exists())
+                    self.assertFalse(index.exists())
+                    replace.assert_not_called()
+                    update_index.assert_not_called()
+            finally:
+                release.set()
+                if stopper.ident is not None:
+                    stopper.join(timeout=10)
+                join_worker(timeout=10)
+
+    def test_cancel_during_probe_prevents_media_and_index_commit(self):
+        self._cancel_during_probe()
+
+    def test_cancel_during_probe_prevents_commit_after_the_join_timeout(self):
+        self._cancel_during_probe(join_times_out=True)
+
+    def test_cancel_during_probe_keeps_cancelled_if_the_probe_fails_after_cleanup(self):
+        self._cancel_during_probe(join_times_out=True, probe_fails=True)
+
+
 if __name__ == "__main__":
     unittest.main()
