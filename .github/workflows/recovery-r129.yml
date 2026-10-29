@@ -1,0 +1,131 @@
+name: recovery r129 verification
+
+on:
+  push:
+    branches: [verify/recovery-r129]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.repository == 'howyay/corner-pocket' && github.ref == 'refs/heads/verify/recovery-r129'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EVIDENCE_DIR: /mnt/ext4dat/recovery-r129/evidence
+      MEDIA_DIR: /mnt/ext4dat/recovery-r129/media
+      TMPDIR: /mnt/ext4dat/recovery-r129/tmp
+      PYTHONUNBUFFERED: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      PIP_NO_CACHE_DIR: '1'
+    steps:
+      - name: Read the candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Record the identity and create evidence directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo mkdir -p "$EVIDENCE_DIR" "$MEDIA_DIR" "$TMPDIR"
+          sudo chown -R "$(id -u):$(id -g)" /mnt/ext4dat/recovery-r129
+          test "$GITHUB_REPOSITORY" = howyay/corner-pocket
+          test "$GITHUB_REF" = refs/heads/verify/recovery-r129
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = cdc5edb9622bb186673e967682d02a05191d8b70
+          git ls-tree -r HEAD -- annotator/vod_import.py src/eval_events.py src/motion_scan.py \
+            tests/test_ball_world_owners.py tests/test_built_in_dataset_owner.py \
+            tests/test_vod_import.py tools/ball_world_demo.py > "$EVIDENCE_DIR/sources.txt"
+          diff -u scripts/recovery-r129-sources.txt "$EVIDENCE_DIR/sources.txt"
+          git show --format=fuller --stat HEAD > "$EVIDENCE_DIR/candidate.txt"
+          git diff HEAD^ HEAD -- .github/workflows/secret-scan.yml > "$EVIDENCE_DIR/secret-scan-diff.txt"
+          test ! -s "$EVIDENCE_DIR/secret-scan-diff.txt"
+          sha256sum -c scripts/recovery-r129-sha256.txt > "$EVIDENCE_DIR/verification-hashes-check.txt"
+          sha256sum scripts/recovery-r129-sources.txt .github/workflows/recovery-r129.yml \
+            scripts/recovery-r129-media-probe.py > "$EVIDENCE_DIR/verification-sha256.txt"
+          df -h / "$MEDIA_DIR" > "$EVIDENCE_DIR/disk-before.txt"
+
+      - name: Select Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.14'
+
+      - name: Select Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Install the original dependency pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee "$EVIDENCE_DIR/dependencies.log") 2>&1
+          trap 'code=$?; printf "%s\n" "$code" > "$EVIDENCE_DIR/dependencies.exit"' EXIT
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg libgl1 libglib2.0-0
+          python -m venv .venv
+          .venv/bin/python -m pip install --no-cache-dir torch==2.9.1 torchvision==0.24.1 \
+            --index-url https://download.pytorch.org/whl/cpu
+          .venv/bin/python -m pip install --no-cache-dir -r requirements.txt
+          .venv/bin/python -m pip freeze > "$EVIDENCE_DIR/packages.txt"
+          .venv/bin/python --version
+          node --version
+          ffmpeg -version
+          .venv/bin/python -c 'import cv2; print("OpenCV", cv2.__version__)'
+          df -h / "$MEDIA_DIR" > "$EVIDENCE_DIR/disk-after-install.txt"
+
+      - name: Run each suite once and check synthetic media
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$TMPDIR/python-verbose" <<'WRAPPER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "${1:-}" == -m && "${2:-}" == unittest ]]; then
+            shift 2
+            exec "$GITHUB_WORKSPACE/.venv/bin/python" -m unittest "$@" --verbose
+          fi
+          exec "$GITHUB_WORKSPACE/.venv/bin/python" "$@"
+          WRAPPER
+          chmod 700 "$TMPDIR/python-verbose"
+          cp "$TMPDIR/python-verbose" "$EVIDENCE_DIR/python-wrapper.txt"
+          printf 'check\texit_code\n' > "$EVIDENCE_DIR/results.tsv"
+          failed=0
+          run_check() {
+            local label="$1" code
+            shift
+            set +e
+            "$@" > "$EVIDENCE_DIR/$label.log" 2>&1
+            code=$?
+            set -e
+            printf '%s\t%s\n' "$label" "$code" | tee -a "$EVIDENCE_DIR/results.tsv"
+            cat "$EVIDENCE_DIR/$label.log"
+            if [ "$code" -ne 0 ]; then failed=1; fi
+          }
+          PYTHON="$TMPDIR/python-verbose" run_check python ./scripts/pool-test.sh python
+          run_check js-ops node tests/test_ops.js
+          run_check js-board node tests/test_board.js
+          run_check js-app-timeline node tests/test_app_timeline.js
+          PYTHONPATH=. run_check media .venv/bin/python scripts/recovery-r129-media-probe.py
+          awk '/skipped / || /SKIP/ || /Ran [0-9]+ tests/ || /^OK/ || /^FAILED/' \
+            "$EVIDENCE_DIR/python.log" > "$EVIDENCE_DIR/python-summary.txt"
+          df -h / "$MEDIA_DIR" > "$EVIDENCE_DIR/disk-after-checks.txt"
+          exit "$failed"
+
+      - name: Retain text evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recovery-r129-text-${{ github.run_id }}
+          path: |
+            /mnt/ext4dat/recovery-r129/evidence/*.log
+            /mnt/ext4dat/recovery-r129/evidence/*.txt
+            /mnt/ext4dat/recovery-r129/evidence/*.tsv
+            /mnt/ext4dat/recovery-r129/evidence/*.exit
+          if-no-files-found: error
+          retention-days: 3
+          include-hidden-files: false
